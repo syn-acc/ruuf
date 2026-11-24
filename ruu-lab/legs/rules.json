@@ -1,0 +1,18 @@
+{
+  "colab": {
+    "parent": "1120-133339ac-qwen35-4b",
+    "model": "Qwen/Qwen3.5-4B",
+    "gpu": "L4",
+    "hours": 1.5,
+    "strides_per_day": 3,
+    "units_about": 1.5,
+    "minutes_about": 50,
+    "policies": ["verified-short", "unverified-short"],
+    "notes": [
+      "Baseline: the untuned model scores 58.2% on all 3,714 test items; the per-family numbers are in `families`.",
+      "Earlier strides, by hand: on ten hard families, training on checked short answers gave +4.8 and +7.9 points (two seeds), while the same amount of unchecked answers gave -3.9. No gain carried to families that were not trained.",
+      "Two children trained on identical data differed by about 3 points, so a difference under about 5 points needs a second seed before it means anything.",
+      "Practice items 0 to 71 of those ten families are already used; start pool_offset at 72 there for fresh items."
+    ]
+  }
+}

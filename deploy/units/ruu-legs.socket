@@ -1,0 +1,13 @@
+[Unit]
+Description=Ruu legs: request socket for compute Ruu can start elsewhere
+
+[Socket]
+ListenStream=/run/ruu-legs.sock
+SocketUser=root
+SocketGroup=hermes
+SocketMode=0660
+Accept=yes
+MaxConnections=1
+
+[Install]
+WantedBy=sockets.target
