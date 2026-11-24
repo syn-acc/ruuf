@@ -112,18 +112,13 @@
     ],
     "respond": [
       [
-        "gpt-5.6-luna",
-        "low",
+        "gpt-5.6-sol",
+        "medium",
         3
       ],
       [
         "gpt-5.6-terra",
-        "low",
-        1
-      ],
-      [
-        "gpt-5.6-sol",
-        "low",
+        "medium",
         1
       ]
     ],
@@ -187,5 +182,7 @@
   "tokens_per_percent": 150000,
   "burst_hours": 1.5,
   "lean_below_tokens_per_hour": 20000,
-  "fallback_tokens_per_hour": 30000
+  "fallback_tokens_per_hour": 30000,
+  "log_thread_id": "1574896456731467846",
+  "respond_context": 40
 }
