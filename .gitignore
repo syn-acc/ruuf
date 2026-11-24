@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+*.sqlite3
+*.pre-*
+*.before*
+*.orig
+config.json
+!kit/seeds/*/config.json
+!ruu-lab/config.json
+library/
+state.json
