@@ -1,0 +1,11 @@
+[Unit]
+Description=Check SCRU channel silence every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=60s
+AccuracySec=5s
+Unit=discord-idle.service
+
+[Install]
+WantedBy=timers.target

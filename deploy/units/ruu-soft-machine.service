@@ -1,0 +1,34 @@
+[Unit]
+Description=Ruu soft machine: continuous lab runner for #ruu-building
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=10min
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=hermes
+Group=hermes
+Environment=HERMES_HOME=/data/syn.gl/hermes/.hermes
+Environment=HOME=/data/syn.gl/hermes
+Environment=CODEX_HOME=/data/syn.gl/hermes/.codex
+Environment=PATH=/data/syn.gl/hermes/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=/data/syn.gl/hermes/plugins/ruu-lab
+ExecStart=/data/syn.gl/hermes/runtime/venv/bin/python /data/syn.gl/hermes/plugins/ruu-lab/soft_machine.py --config /data/syn.gl/hermes/.hermes/ruu-lab.json --daemon
+Restart=on-failure
+RestartSec=15
+SyslogIdentifier=ruu-soft-machine
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/data/syn.gl/hermes/.hermes/ruu-lab /data/syn.gl/hermes/.codex
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryMax=768M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target
