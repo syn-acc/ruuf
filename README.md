@@ -23,6 +23,7 @@ from under the framework's.
 | `plugins/discord-reader/` | MCP server that lets the agent read Discord channels, scoped to the requester. |
 | `ruu-lab/` | The soft machine: Ruu's continuous daemon for its own channel, with standing orders, a library, a usage budget and model routes. |
 | `ruu-lab/hands/` | The sandbox Ruu runs code in: no network, one job per connection. |
+| `ruu-lab/legs/` | Work on rented machines elsewhere. Ruu sends the parameters of an experiment, never code; the host starts it, meters it and scores it. |
 | `ruu-lab/child/` | The child system: Ruu improves an open model and the host scores it. |
 | `kit/` | The same machine with the character taken out, plus a seed per agent, for making another agent like Ruu. |
 | `deploy/units/` | The systemd units as deployed. |

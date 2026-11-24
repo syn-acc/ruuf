@@ -163,6 +163,25 @@ holds = "The hands runner, installed where the sandbox can read it and nothing c
 path = "/data/ruu-hands/workspace"
 holds = "The only folder the agent's own code can write to."
 
+[places.legs_socket]
+path = "/run/ruu-legs.sock"
+kind = "socket"
+holds = "Where the soft machine asks the legs for a stride. How often it asks is `legs.every_hours` in the soft machine's settings."
+
+[places.legs_code]
+path = "/opt/ruu-legs"
+holds = "The legs runner and its rules, out of the agent's reach. rules.json holds the limit on strides per day."
+
+[places.legs_home]
+path = "/data/ruu-legs"
+holds = "One record and one log per stride. The weekly limit on rented compute is not here: it is in allow.json under child_code."
+
+# Made the first time a run draws a picture, so `planned` until then.
+[places.eyes]
+path = "{home}/.hermes/ruu-lab/eyes"
+planned = true
+holds = "The pictures the agent's last run drew, kept to be shown back to it."
+
 [places.score_socket]
 path = "/run/ruu-score.sock"
 kind = "socket"
@@ -195,8 +214,8 @@ start = "always"
 user = "hermes"
 restart = "on-failure"
 restart_seconds = 15
-reads = ["persona", "convictions", "config", "library", "frontier", "runtime", "codex_bin", "codex_home", "env", "hands_socket", "score_socket"]
-writes = ["state", "codex_home"]
+reads = ["persona", "convictions", "config", "library", "frontier", "runtime", "codex_bin", "codex_home", "env", "hands_socket", "score_socket", "legs_socket"]
+writes = ["state", "codex_home", "eyes"]
 limits = { memory_mb = 768, tasks = 128 }
 unit = "ruu-soft-machine.service"
 
@@ -233,6 +252,18 @@ reads = ["hands_code"]
 writes = ["hands_workspace"]
 limits = { network = false, memory_mb = 1024, tasks = 64, runtime_seconds = 150, jobs_at_once = 1 }
 unit = "ruu-hands.socket"
+
+# The runner itself has no network; the stride it starts runs as the child system's user and does.
+[parts.legs]
+about = "Work sent to rented machines elsewhere: parameters only, never the agent's own code."
+run = ["/usr/bin/python3", "-I", "{legs_code}/runner.py"]
+start = "socket"
+socket = "legs_socket"
+user = "root"
+reads = ["legs_code"]
+writes = ["legs_home"]
+limits = { network = false, memory_mb = 256, tasks = 32, runtime_seconds = 60, jobs_at_once = 1 }
+unit = "ruu-legs.socket"
 
 [parts.score]
 about = "Scores a child's answers where the agent cannot reach."

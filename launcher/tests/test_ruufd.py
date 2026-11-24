@@ -438,7 +438,7 @@ class TheRepositoryManifest(unittest.TestCase):
         units = HERE.parent.parent / "deploy" / "units"
         service = {"soft-machine": "ruu-soft-machine.service", "idle-poster": "discord-idle.service",
                    "frontier-scan": "ruu-frontier-scan.service", "hands": "ruu-hands@.service",
-                   "score": "ruu-score@.service", "child-reap": "ruu-child-reap.service",
+                   "score": "ruu-score@.service", "legs": "ruu-legs@.service", "child-reap": "ruu-child-reap.service",
                    "gateway": "bot-syn-gl.service"}
         self.assertEqual(set(service), set(self.m.parts))
         for name, unit in service.items():

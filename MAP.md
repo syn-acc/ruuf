@@ -10,7 +10,7 @@ For where things are on a running machine, ask the launcher: `python launcher/ru
 | `ruuf.toml` | The manifest: every place and every part, by name. The launcher reads this and nothing else. |
 | `launcher/` | `ruufd`: knows what the parts are and where everything lives; starts and watches them. `origin.py` is what it demands from the operator before it starts anything. |
 | `routines/` | Rules written as programs. `ship.py` is how a change reaches main. |
-| `ruu-lab/` | The soft machine (the loop that speaks and works), the daily frontier scan, the convictions (`dna.md`), the library's sources, and the sandboxes it uses: `hands/` (runs the agent's own code, no network) and `child/` (work on rented machines, with `child/scorebox/`, the judge it cannot reach). |
+| `ruu-lab/` | The soft machine (the loop that speaks and works; it has eyes: it is shown the pictures its last run drew), the daily frontier scan, the convictions (`dna.md`), the library's sources, and the sandboxes it uses: `hands/` (runs the agent's own code, no network), `legs/` (work on rented machines elsewhere; Colab is the first kind) and `child/` (work on rented machines, with `child/scorebox/`, the judge it cannot reach). |
 | `plugins/discord-idle/` | The idle poster: one line after a long silence. Holds the persona. |
 | `plugins/discord-niches/` | The reaction-role menu for the server's niche groups. |
 | `plugins/discord-reader/` | Reads Discord history on request: the ears. It can also react, reply and pin when asked to. |
