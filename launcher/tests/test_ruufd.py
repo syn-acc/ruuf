@@ -350,7 +350,9 @@ class Running(Case):
     def test_root_starts_a_part_as_its_own_user(self):
         import pwd
         nobody = pwd.getpwnam("nobody")
-        s = self.supervisor(part("low", "import os; print('uid', os.getuid(), os.environ['USER'])", user="nobody"))
+        # /bin/sh, not this interpreter: the test's own Python may live where `nobody` cannot reach.
+        entry = "[parts.low]\nrun = ['/bin/sh', '-c', 'echo uid $(id -u) $USER']\nstart = 'always'\nuser = 'nobody'\n"
+        s = self.supervisor(entry)
         self.until(s, lambda: s.jobs[0].state in ("stopped", "failed"))
         text = self.log("low")
         self.assertIn(f"uid {nobody.pw_uid} nobody", text)
