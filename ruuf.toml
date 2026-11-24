@@ -15,6 +15,25 @@ home = "/data/syn.gl/hermes"
 code = "{home}/plugins"
 python = "{home}/runtime/venv/bin/python"
 
+# ── how a change reaches main ────────────────────────────────────────────────
+# Read by routines/ship.py. `prove` puts a branch tip in its own folder under `proofs` on the
+# machine reached by `remote` and runs each check as each user; it touches nothing that is running.
+# `land` fast-forwards main to a tip whose proof passed. A branch more than `max_ahead` commits
+# ahead of main, or proven and not landed, makes `status` fail.
+
+[ship]
+remote = ["ssh", "uk"]
+proofs = "{home}/ruuf/proofs"
+owner = "hermes"
+users = ["root", "hermes"]
+checks = [
+  ["{python}", "-m", "unittest", "discover", "launcher/tests"],
+  ["{python}", "-m", "unittest", "discover", "routines/tests"],
+  ["{python}", "launcher/ruufd.py", "check", "--host"],
+]
+max_ahead = 3
+keep = 3
+
 # ── the ladder ───────────────────────────────────────────────────────────────
 # The only thing ruuf insists on: one or more models, best first. Smart, slow and expensive at the
 # top; cheap, fast and dumb at the bottom. Nothing reads this yet: routes in ruu-lab/config.json

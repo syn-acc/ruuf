@@ -96,6 +96,7 @@ class Machine:
     ladder: tuple
     providers: dict
     parts: dict
+    ship: dict = field(default_factory=dict)  # how a change reaches main: read by routines/ship.py
 
     def where(self, name):
         try:
@@ -270,9 +271,17 @@ def load(path, env=os.environ):
         if part.sandbox and part.user in trusted:
             say(f"parts.{part.name}: runs as {part.user!r}, the same user as a part that reads secrets")
 
+    def expand_all(value, where_):
+        if isinstance(value, str):
+            return expand(value, where_, paths)
+        if isinstance(value, list):
+            return [expand_all(v, where_) for v in value]
+        return value
+    ship = {key: expand_all(value, f"ship.{key}") for key, value in (raw.get("ship") or {}).items()}
+
     if problems:
         raise ManifestError(problems)
-    return Machine(path, dict(agent), places, tuple(ladder), providers, parts)
+    return Machine(path, dict(agent), places, tuple(ladder), providers, parts, ship)
 
 
 def check_host(machine, user_exists=None, unseen=None):
