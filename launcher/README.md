@@ -22,6 +22,30 @@ The soft machine, idle poster and scanner take their places from the launcher wh
 (`RUUF_PLACE_<NAME>`), and fall back to the deployment's paths when a unit starts them, as now. A
 test holds each part's entry to the places its code asks for.
 
+## The origin
+
+A persona and a standing motive were written from something: a person, a place, what the two are
+to each other, and why the person wanted an agent there. That is the origin. ruuf holds none of its
+own. The launcher demands it from the operator and starts nothing until every question is answered.
+
+    python launcher/ruufd.py origin         # what is known, what is guessed, what is still demanded
+    python launcher/ruufd.py origin ask     # the operator answers, at a terminal
+    python launcher/ruufd.py origin blank   # the file with nothing answered, to fill in by hand
+
+| | |
+| --- | --- |
+| What is asked | Who the operator is (`operator`), what they are to the agent and what their word is to it (`relation`), where it lives (`world`), and why it exists and what it does when left alone (`spark`). `origin.py` holds the questions. |
+| What the launcher works out | Who is asking, from the machine: the login, who is behind `sudo`, the clone's git identity, whether the manifest is theirs, whether the login is one a part runs as. From that it says what the caller looks like: the one who runs the machine, the one who set it up, the agent's own account, or a visitor. |
+| Guesses | A name and a relation may be guessed. A guess is shown as a guess and becomes an answer only when the operator presses Enter on it in `origin ask`. |
+| Who may answer | The operator, at a terminal. With no terminal `origin ask` refuses: an agent does not answer for its operator. |
+| Where it is kept | The place called `origin`, on the host, readable by its owner only. Never in the repository. |
+| What is shown | Which questions are answered, by whom and when. The answers themselves are never printed. |
+| What it gates | `run` refuses while a question is open. `check` reports the state and does not fail on it. |
+
+Nothing reads the origin yet beyond the launcher. Deriving the persona, the convictions and the
+drives from it is the next step, and so is working out who a person is to the agent while it is
+talking to them, which today is one number per member in the soft machine.
+
 ## Use
 
     python launcher/ruufd.py check            # is the manifest sound

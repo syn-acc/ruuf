@@ -35,9 +35,10 @@ max_ahead = 3
 keep = 3
 
 # ── the ladder ───────────────────────────────────────────────────────────────
-# The only thing ruuf insists on: one or more models, best first. Smart, slow and expensive at the
-# top; cheap, fast and dumb at the bottom. Nothing reads this yet: routes in ruu-lab/config.json
-# still name models. It is here so the next steps have one place to point at.
+# One of the two things ruuf insists on (the other is an origin): one or more models, best first.
+# Smart, slow and expensive at the top; cheap, fast and dumb at the bottom. Nothing reads this yet:
+# routes in ruu-lab/config.json still name models. It is here so the next steps have one place to
+# point at.
 
 [[ladder]]
 provider = "codex"
@@ -62,6 +63,15 @@ client = "{runtime}"
 # ── the map ──────────────────────────────────────────────────────────────────
 # Names to places. `planned` places do not exist yet; they are named so that what comes next has
 # somewhere to go. `secret` places are never shown to the agent and never reachable from a sandbox.
+
+# The origin comes first because everything about the agent comes from it. It is the operator's own
+# words and is kept on the host, never in this repository. `planned` until the operator has answered
+# (`ruufd origin`); no part reads it yet.
+[places.origin]
+path = "{home}/.hermes/origin.toml"
+kind = "file"
+planned = true
+holds = "Where the agent comes from: who its operator is, what they are to each other and why it exists. The launcher demands it and starts nothing without it."
 
 [places.persona]
 path = "{code}/discord-idle/persona.md"

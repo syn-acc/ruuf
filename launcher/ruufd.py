@@ -12,11 +12,16 @@ and timers, with restarts, time limits and one log per part. It will not start a
 names a `unit`: that part belongs to systemd until its entry says otherwise. Socket parts (the
 sandboxes) are not started yet.
 
+It starts nothing until the agent has an origin: who its operator is, what they are to each other
+and why it exists, in the operator's own words (see origin.py). The launcher holds none of its own.
+
     python launcher/ruufd.py check            is the manifest sound
     python launcher/ruufd.py check --host     and does this machine match it
     python launcher/ruufd.py where [name]     a place on the map, or all of them
     python launcher/ruufd.py status           the process table, live if the launcher is running
     python launcher/ruufd.py map              the map as the agent may be shown it: no secret places
+    python launcher/ruufd.py origin           where the agent comes from: what is known, what is demanded
+    python launcher/ruufd.py origin ask       the operator answers, at a terminal
     python launcher/ruufd.py run --all        start every part the launcher owns, and watch them
     python launcher/ruufd.py run --only a b   or only these
     python launcher/ruufd.py stop             stop the launcher and everything it started
@@ -41,6 +46,9 @@ try:
     import tomllib
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import origin as origins  # noqa: E402
 
 STARTS = ("always", "timer", "socket", "manual")
 KINDS = ("dir", "file", "socket")
@@ -500,6 +508,10 @@ class Supervisor:
         self._last_state = text
 
     def open(self):
+        origin = origins.read(self.machine)
+        if not origin.complete:
+            raise Refused("this agent has no origin yet: " + (origin.problem or f"{len(origin.open)} question(s) "
+                          "only its operator can answer are open") + ". Nothing starts until it has: `ruufd origin`")
         logs = self.machine.where("logs")
         logs.mkdir(parents=True, exist_ok=True)
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
@@ -579,7 +591,7 @@ def table(rows, heads):
     return "\n".join([line(heads), line(["-" * w for w in widths]), *map(line, rows)])
 
 
-def main(argv=None, out=sys.stdout):
+def main(argv=None, out=sys.stdout, read_line=None):
     parser = argparse.ArgumentParser(prog="ruufd", description="The ruuf launcher.")
     parser.add_argument("--manifest", help="path to ruuf.toml; default: $RUUF_MANIFEST, then the nearest one")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -591,6 +603,8 @@ def main(argv=None, out=sys.stdout):
     s = sub.add_parser("status", help="the process table")
     s.add_argument("--json", action="store_true")
     sub.add_parser("map", help="the map as the agent may be shown it")
+    o = sub.add_parser("origin", help="where the agent comes from: what is known and what is demanded")
+    o.add_argument("action", nargs="?", choices=("show", "ask", "blank"), default="show")
     r = sub.add_parser("run", help="start parts and watch them, in the foreground")
     which = r.add_mutually_exclusive_group(required=True)
     which.add_argument("--all", action="store_true", help="every part the launcher owns")
@@ -616,6 +630,7 @@ def main(argv=None, out=sys.stdout):
         say(f"manifest sound: {machine.manifest}")
         say(f"  agent {machine.agent['id']}, {len(machine.ladder)} rung(s), "
             f"{len(machine.places)} places, {len(machine.parts)} parts")
+        say("  " + origins.summary(machine))
         if not args.host:
             return 0
         unseen = []
@@ -651,6 +666,13 @@ def main(argv=None, out=sys.stdout):
     if args.command == "map":
         say(json.dumps(machine.safe_map(), indent=2, ensure_ascii=False))
         return 0
+
+    if args.command == "origin":
+        if args.action == "blank":
+            return origins.blank(say)
+        if args.action == "ask":
+            return origins.ask(machine, read_line or input, say, terminal=bool(read_line) or sys.stdin.isatty())
+        return origins.show(machine, say)
 
     if args.command == "status":
         live = read_state(machine)

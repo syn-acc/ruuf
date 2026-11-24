@@ -79,6 +79,12 @@ class Case(unittest.TestCase):
         path.write_text(text, encoding="utf-8")
         return path
 
+    def give_origin(self, manifest):
+        """Answer every question, as an operator would have before anything is started."""
+        m = ruufd.load(manifest, env={})
+        ruufd.origins.write(m, {key: "said" for key in ruufd.origins.NEEDED}, by="tester")
+        return m
+
     def problems(self, text):
         with self.assertRaises(ruufd.ManifestError) as caught:
             ruufd.load(self.write(text), env={})
@@ -250,7 +256,7 @@ def part(name, code, **fields):
 
 class Running(Case):
     def supervisor(self, parts_text, names=None, **kwargs):
-        m = ruufd.load(self.write(RUNNABLE + parts_text), env={})
+        m = self.give_origin(self.write(RUNNABLE + parts_text))
         s = ruufd.Supervisor(m, names or list(m.parts), **kwargs)
         s.open()
         self.addCleanup(lambda: s.close(grace=2))
@@ -372,10 +378,10 @@ class Running(Case):
 
     def test_run_status_and_stop_from_the_command_line(self):
         manifest = self.write(RUNNABLE + part("mind", "import time; time.sleep(60)"))
+        m = self.give_origin(manifest)  # nothing starts without one
         launcher = [sys.executable, str(HERE.parent / "ruufd.py"), "--manifest", str(manifest)]
         proc = subprocess.Popen([*launcher, "run", "--all"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.addCleanup(proc.kill)
-        m = ruufd.load(manifest, env={})
         end = time.monotonic() + 10
         while time.monotonic() < end:
             state = ruufd.read_state(m)

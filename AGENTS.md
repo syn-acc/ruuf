@@ -15,6 +15,15 @@ they are and where everything lives, and a set of routines that turn rules into 
 Whatever the launcher answers is the next thing to do. Do not build a path by hand: ask `where`.
 `launcher/README.md` says what it can and cannot do yet.
 
+## The origin is not yours to write
+
+    python launcher/ruufd.py origin         # what is known about where this agent comes from
+
+An agent comes from somewhere: who its operator is, what they are to each other, and why it exists.
+The launcher demands that from the operator and starts nothing without it. If questions are open,
+tell your operator and point them at `ruufd origin ask`. Do not answer for them, do not fill the
+file in from what you think they would say, and do not copy another agent's.
+
 ## How a change reaches main
 
 Never push to `main` yourself, and never merge by hand. Use the routine:
