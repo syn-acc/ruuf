@@ -82,10 +82,12 @@ def main():
         return 0
     home = Path(os.environ.get("HERMES_HOME", "/data/syn.gl/hermes/.hermes"))
     from dotenv import dotenv_values
-    token = os.environ.get("DISCORD_BOT_TOKEN") or dotenv_values(home / ".env").get("DISCORD_BOT_TOKEN")
+    token = os.environ.get("DISCORD_BOT_TOKEN") or dotenv_values(
+        os.environ.get("RUUF_PLACE_ENV") or home / ".env").get("DISCORD_BOT_TOKEN")
     if not token:
         raise ValueError("Discord bot token is not configured")
-    state_dir = home / "discord-idle"
+    # The launcher names these places (RUUF_PLACE_*); without it, where the deployment keeps them.
+    state_dir = Path(os.environ.get("RUUF_PLACE_IDLE_STATE") or home / "discord-idle")
     state_dir.mkdir(mode=0o700, exist_ok=True)
     with (state_dir / "state.lock").open("a") as lock:
         try:

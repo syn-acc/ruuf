@@ -22,12 +22,23 @@ import tomllib
 from pathlib import Path
 from urllib.parse import quote
 
+
+
+def place(name, default):
+    """Where the launcher says this place is (ruuf.toml, handed over as RUUF_PLACE_<NAME>).
+    Run without the launcher, it is where the deployment has always kept it."""
+    return Path(os.environ.get("RUUF_PLACE_" + name.upper()) or default)
+
+
 HOME = Path(os.environ.get("HERMES_HOME", "/data/syn.gl/hermes/.hermes"))
-CODEX_HOME = Path(os.environ.get("CODEX_HOME", "/data/syn.gl/hermes/.codex"))
-RUNTIME = Path("/data/syn.gl/hermes/runtime")
 HERE = Path(__file__).resolve().parent
-IDLE = HERE.parent / "discord-idle"
-STATE = HOME / "ruu-lab"
+CODEX_HOME = place("codex_home", os.environ.get("CODEX_HOME", "/data/syn.gl/hermes/.codex"))
+CODEX_BIN = str(place("codex_bin", "/data/syn.gl/hermes/.local/bin/codex"))
+RUNTIME = place("runtime", "/data/syn.gl/hermes/runtime")
+PERSONA = place("persona", HERE.parent / "discord-idle" / "persona.md")
+CONVICTIONS = place("convictions", HERE / "dna.md")
+ENV_FILE = place("env", HOME / ".env")
+STATE = place("state", HOME / "ruu-lab")
 
 # ── forms: what the machine makes when nobody asked ─────────────────────────
 FORMS = {
@@ -51,11 +62,11 @@ FORMS = {
 }
 ROLLED = ("creation", "build_log", "notice", "transmission")
 BLOCK_FORMS = ("creation", "build_log", "seventh")
-LIBRARY = HERE / "library"
-FRONTIER = STATE / "frontier"  # one digest a day from frontier_scan.py: papers, open models, tool versions
+LIBRARY = place("library", HERE / "library")
+FRONTIER = place("frontier", STATE / "frontier")  # one digest a day from frontier_scan.py: papers, open models, tool versions
 SCAN_BRIEF = ("Standing motive: know what the outside is doing. Read today's scan of new papers, open models "
               "and tool versions, keep what bears on the work, and say what it changes.")
-HANDS_SOCKET = "/run/ruu-hands.sock"
+HANDS_SOCKET = str(place("hands_socket", "/run/ruu-hands.sock"))
 BUILD_STEPS = 6
 HANDS_NOTE = ("Ruu has hands: a private workspace on the server. Put files in `files` (relative paths, at most 8, "
               "at most 60,000 characters each, not under data/) and ONE shell command in `command`. The host writes the files and runs the command in a sandbox: Python 3.10 with the "
@@ -528,8 +539,8 @@ def instructions(lean=False, room=False):
     plans. The character papers are about 3,000 tokens, and a build step does not need them."""
     if lean:
         return INSTRUCTIONS + "\n\n" + REGISTER
-    persona = (IDLE / "persona.md").read_text(encoding="utf-8")
-    dna = (HERE / "dna.md").read_text(encoding="utf-8")
+    persona = PERSONA.read_text(encoding="utf-8")
+    dna = CONVICTIONS.read_text(encoding="utf-8")
     if not persona.strip() or len(persona) > 20000 or len(dna) > 6000:
         raise ValueError("Missing or oversized persona/dna")
     return (INSTRUCTIONS + "\n\nORIGINAL RUU CHARACTER SPECIFICATION:\n" + persona
@@ -1127,7 +1138,7 @@ def turn(cfg, model, effort, prompt, schema=None, lean=False, base=None):
     for key, value in overrides.items():
         args.extend(["-c", f"{key}={json.dumps(value)}"])
     started_at = time.monotonic()
-    with CodexAppServerClient(codex_bin="/data/syn.gl/hermes/.local/bin/codex",
+    with CodexAppServerClient(codex_bin=CODEX_BIN,
                               codex_home=str(CODEX_HOME), extra_args=args) as client:
         client.initialize(client_name="scru-soft-machine", capabilities={"experimentalApi": True}, timeout=10)
         week = None
@@ -1194,7 +1205,7 @@ def read_meter():
     """Read the weekly window without spending anything."""
     sys.path.insert(0, str(RUNTIME))
     from agent.transports.codex_app_server import CodexAppServerClient
-    with CodexAppServerClient(codex_bin="/data/syn.gl/hermes/.local/bin/codex", codex_home=str(CODEX_HOME),
+    with CodexAppServerClient(codex_bin=CODEX_BIN, codex_home=str(CODEX_HOME),
                               extra_args=[]) as client:
         client.initialize(client_name="scru-soft-machine", capabilities={"experimentalApi": True}, timeout=10)
         primary = client.request("account/rateLimits/read", {}, timeout=15).get("rateLimits", {}).get("primary", {}) or {}
@@ -1908,7 +1919,7 @@ def main():
                 log(order=row[0], doc=row[1], learned=row[2])
         return 0
     from dotenv import dotenv_values
-    token = dotenv_values(HOME / ".env").get("DISCORD_BOT_TOKEN")
+    token = dotenv_values(ENV_FILE).get("DISCORD_BOT_TOKEN")
     if not token:
         raise ValueError("Discord bot token is not configured")
     api, db = Discord(token), open_db()

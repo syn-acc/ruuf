@@ -105,7 +105,8 @@ On skip text and news_id are empty.
 
 def writer_instructions():
     """The user's original document is authoritative for character, verbatim."""
-    persona = Path(__file__).with_name("persona.md").read_text(encoding="utf-8")
+    persona = Path(os.environ.get("RUUF_PLACE_PERSONA")
+                   or Path(__file__).with_name("persona.md")).read_text(encoding="utf-8")
     if not persona.strip() or len(persona) > 20000:
         raise ValueError("Missing or oversized Ruu persona")
     return (INSTRUCTIONS + "\n\nORIGINAL RUU CHARACTER SPECIFICATION:\n" + persona
@@ -311,8 +312,11 @@ def preview_examples(messages, config, now, count, *, extremes=False, world_swee
 
 def _model_write(prompt, config, schema, max_chars=2400):
     home = Path(os.environ.get("HERMES_HOME", "/data/syn.gl/hermes/.hermes"))
-    codex_home = Path(os.environ.get("CODEX_HOME", "/data/syn.gl/hermes/.codex"))
-    runtime = Path("/data/syn.gl/hermes/runtime")
+    # The launcher names these places (RUUF_PLACE_*); without it, where the deployment keeps them.
+    codex_home = Path(os.environ.get("RUUF_PLACE_CODEX_HOME")
+                      or os.environ.get("CODEX_HOME", "/data/syn.gl/hermes/.codex"))
+    runtime = Path(os.environ.get("RUUF_PLACE_RUNTIME") or "/data/syn.gl/hermes/runtime")
+    codex_bin = os.environ.get("RUUF_PLACE_CODEX_BIN") or "/data/syn.gl/hermes/.local/bin/codex"
     sys.path.insert(0, str(runtime))
     from agent.transports.codex_app_server import CodexAppServerClient
     # Use the existing authenticated account, not new API keys or a second provider.
@@ -334,7 +338,7 @@ def _model_write(prompt, config, schema, max_chars=2400):
     for key, value in overrides.items():
         args.extend(["-c", f"{key}={json.dumps(value)}"])
     with CodexAppServerClient(
-        codex_bin="/data/syn.gl/hermes/.local/bin/codex", codex_home=str(codex_home), extra_args=args,
+        codex_bin=codex_bin, codex_home=str(codex_home), extra_args=args,
     ) as client:
         client.initialize(client_name="scru-idle-writer", capabilities={"experimentalApi": True}, timeout=10)
         started = client.request("thread/start", {

@@ -23,7 +23,9 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-OUT = Path(os.environ.get("HERMES_HOME", "/data/syn.gl/hermes/.hermes")) / "ruu-lab" / "frontier"
+# The launcher names the place (RUUF_PLACE_FRONTIER); without it, where the deployment keeps it.
+OUT = Path(os.environ.get("RUUF_PLACE_FRONTIER")
+           or Path(os.environ.get("HERMES_HOME", "/data/syn.gl/hermes/.hermes")) / "ruu-lab" / "frontier")
 AGENT = {"User-Agent": "frontier-scan/0.1"}
 LIMIT = 8600  # the study step reads 9000 characters
 

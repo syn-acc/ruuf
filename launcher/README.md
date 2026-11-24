@@ -16,8 +16,11 @@ always-on parts and timers, with restarts, time limits and one log file per part
 **On the deployment it starts nothing.** Every part in `ruuf.toml` still names the systemd unit
 that runs it, and the launcher refuses to start a part that names one, so nothing can be started
 twice. A part is handed over by stopping its unit and removing `unit` from its entry. Socket parts
-(the sandboxes) are refused for now: the launcher cannot yet apply their limits. No code reads the
-map yet: the soft machine, idle poster and scanner still carry their own paths.
+(the sandboxes) are refused for now: the launcher cannot yet apply their limits.
+
+The soft machine, idle poster and scanner take their places from the launcher when it starts them
+(`RUUF_PLACE_<NAME>`), and fall back to the deployment's paths when a unit starts them, as now. A
+test holds each part's entry to the places its code asks for.
 
 ## Use
 
@@ -66,6 +69,6 @@ rules protect the sandboxes, the parts that run code the agent wrote:
 
 ## What comes next
 
-In order: hand each part its places so the paths come out of the code; then the sockets and the
-sandboxes, which keep every limit their units set today; then memory and task limits for ordinary
-parts. The launcher is meant to run as root, because it starts parts as different users.
+In order: the sockets and the
+sandboxes, which keep every limit their units set today; memory and task limits for ordinary
+parts; then handing the first real part over from its unit. The launcher is meant to run as root, because it starts parts as different users.

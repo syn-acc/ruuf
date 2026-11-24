@@ -4,6 +4,7 @@
 """
 import io
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -349,9 +350,7 @@ class Running(Case):
     def test_root_starts_a_part_as_its_own_user(self):
         import pwd
         nobody = pwd.getpwnam("nobody")
-        # /bin/sh, not this interpreter: the test's own Python may live where `nobody` cannot reach.
-        entry = "[parts.low]\nrun = ['/bin/sh', '-c', 'echo uid $(id -u) $USER']\nstart = 'always'\nuser = 'nobody'\n"
-        s = self.supervisor(entry)
+        s = self.supervisor(part("low", "import os; print('uid', os.getuid(), os.environ['USER'])", user="nobody"))
         self.until(s, lambda: s.jobs[0].state in ("stopped", "failed"))
         text = self.log("low")
         self.assertIn(f"uid {nobody.pw_uid} nobody", text)
@@ -440,6 +439,19 @@ class TheRepositoryManifest(unittest.TestCase):
             user = next(line.split("=", 1)[1] for line in lines if line.startswith("User="))
             self.assertEqual(" ".join(self.m.parts[name].run), command, name)
             self.assertEqual(self.m.parts[name].user, user, name)
+
+    def test_each_part_declares_every_place_its_code_asks_for(self):
+        repo = HERE.parent.parent
+        code = {"soft-machine": ["ruu-lab/soft_machine.py"],
+                "idle-poster": ["plugins/discord-idle/run.py", "plugins/discord-idle/generate.py"],
+                "frontier-scan": ["ruu-lab/frontier_scan.py"]}
+        for name, files in code.items():
+            text = "".join((repo / f).read_text(encoding="utf-8") for f in files)
+            asked = {n.lower() for n in re.findall(r'RUUF_PLACE_([A-Z_]+)"', text)}
+            asked |= set(re.findall(r'\bplace\("([a-z_]+)"', text))
+            self.assertTrue(asked, name)  # the code does take its places from the launcher
+            part = self.m.parts[name]
+            self.assertLessEqual(asked, {*part.reads, *part.writes}, name)
 
     def test_nothing_in_it_is_the_launchers_to_start_yet(self):
         self.assertEqual(ruufd.owned(self.m), [])  # every part still names its unit
