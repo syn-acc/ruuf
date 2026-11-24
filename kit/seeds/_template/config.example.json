@@ -1,0 +1,40 @@
+{
+  "enabled": false,
+  "token_env": "DISCORD_BOT_TOKEN_@ID@",
+  "guild_id": "the server id",
+  "lab_channel_id": "the id of @CHANNEL@",
+  "bot_id": "the id of this agent's own bot account",
+  "owner_id": "the id of @OWNER@",
+  "poll_seconds": 4,
+  "debounce_seconds": 6,
+  "daily_target": 24,
+  "daily_max": 80,
+  "hourly_max": 8,
+  "turns_hourly_max": 40,
+  "work_share": 0.8,
+  "work_gap_minutes": [6, 14],
+  "self_orders_daily_max": 4,
+  "drives_daily_max": 6,
+  "weekly_ceiling_percent": 15,
+  "models": [["gpt-5.6-luna", "low", 3], ["gpt-5.6-terra", "low", 1]],
+  "routes": {
+    "plan": [["gpt-5.6-sol", "high", 1]],
+    "review": [["gpt-5.6-sol", "medium", 1]],
+    "build": [["gpt-5.6-terra", "medium", 3], ["gpt-5.6-luna", "medium", 2]],
+    "voice": [["gpt-5.6-luna", "medium", 2], ["gpt-5.6-terra", "low", 1]],
+    "respond": [["gpt-5.6-luna", "low", 1]],
+    "study": [["gpt-5.6-luna", "low", 1]]
+  },
+  "routes_lean": {
+    "plan": [["gpt-5.6-sol", "medium", 1]],
+    "review": [["gpt-5.6-terra", "medium", 1]],
+    "build": [["gpt-5.6-luna", "medium", 1]],
+    "voice": [["gpt-5.6-luna", "low", 1]],
+    "respond": [["gpt-5.6-luna", "low", 1]],
+    "study": [["gpt-5.6-luna", "low", 1]]
+  },
+  "tokens_per_percent": 150000,
+  "burst_hours": 1.5,
+  "lean_below_tokens_per_hour": 20000,
+  "fallback_tokens_per_hour": 30000
+}

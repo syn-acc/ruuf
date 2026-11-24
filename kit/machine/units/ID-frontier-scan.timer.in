@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily frontier scan for @NAME@
+
+[Timer]
+OnCalendar=*-*-* 06:20:00 UTC
+RandomizedDelaySec=900
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,35 @@
+#!/bin/bash
+# One-time setup of @NAME@'s hands on uk. Run as root from the directory holding
+# runner.py and the two unit files. Safe to run again.
+set -euo pipefail
+SRC="$(cd "$(dirname "$0")" && pwd)"
+BASE=/data/@ID@-hands
+WS=$BASE/workspace
+IMG=$BASE/workspace.img
+
+id @ID@-hands >/dev/null 2>&1 || useradd --system --home-dir "$WS" --no-create-home --shell /usr/sbin/nologin @ID@-hands
+mkdir -p "$WS" /opt/@ID@-hands
+chmod 755 "$BASE"
+
+# The workspace is its own 1 GB filesystem, so nothing @NAME@ runs can fill /data.
+if [ ! -f "$IMG" ]; then
+  truncate -s 1G "$IMG"
+  mkfs.ext4 -q -F -m 0 -L @ID@-hands "$IMG"
+fi
+chmod 600 "$IMG"
+if ! grep -q "$IMG" /etc/fstab; then
+  cp -a /etc/fstab "/etc/fstab.pre-@ID@-hands"
+  echo "$IMG $WS ext4 loop,nosuid,nodev,nofail 0 0" >> /etc/fstab
+fi
+mountpoint -q "$WS" || mount "$WS"
+chown @ID@-hands:@ID@-hands "$WS"
+chmod 700 "$WS"
+
+install -o root -g root -m 755 "$SRC/runner.py" /opt/@ID@-hands/runner.py
+install -o root -g root -m 644 "$SRC/@ID@-hands.socket" /etc/systemd/system/@ID@-hands.socket
+install -o root -g root -m 644 "$SRC/@ID@-hands@.service" "/etc/systemd/system/@ID@-hands@.service"
+systemd-analyze verify "/etc/systemd/system/@ID@-hands@.service" 2>&1 | grep -v "^$" | head -5 || true
+systemctl daemon-reload
+systemctl enable --now @ID@-hands.socket
+systemctl is-active @ID@-hands.socket
+df -h "$WS" | sed 1d

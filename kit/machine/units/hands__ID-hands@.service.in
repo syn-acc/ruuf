@@ -1,0 +1,67 @@
+[Unit]
+Description=@NAME@ hands: one sandboxed job
+CollectMode=inactive-or-failed
+
+[Service]
+ExecStart=/usr/bin/python3 -I /opt/@ID@-hands/runner.py
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+SyslogIdentifier=@ID@-hands
+User=@ID@-hands
+Group=@ID@-hands
+UMask=0077
+
+# Time, memory, processes, disk writes.
+RuntimeMaxSec=150
+TimeoutStopSec=5
+KillMode=control-group
+MemoryMax=1G
+MemorySwapMax=0
+OOMPolicy=continue
+CPUQuota=100%
+TasksMax=64
+LimitNOFILE=256
+LimitFSIZE=64M
+Nice=10
+
+# No network at all: its own empty network namespace, and no socket families.
+PrivateNetwork=yes
+IPAddressDeny=any
+RestrictAddressFamilies=AF_UNIX
+
+# It sees an operating system and its own workspace. Nothing else on the server.
+ProtectSystem=strict
+ProtectHome=yes
+# /run is made inaccessible, not replaced: on systemd 249 a tmpfs over /run is
+# silently undone by ProtectProc= and ProtectKernelTunables= (found by testing).
+TemporaryFileSystem=/data:ro /srv:ro /opt:ro /var:ro /root:ro /mnt:ro /media:ro /boot:ro /etc:ro
+InaccessiblePaths=/run
+BindPaths=/data/@ID@-hands/workspace
+BindReadOnlyPaths=/opt/@ID@-hands /etc/ld.so.cache /etc/localtime
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateIPC=yes
+PrivateUsers=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+
+# No privileges and no way to gain any.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# No new sockets of any kind; the job socket it was started with stays usable.
+SystemCallFilter=~socket socketpair connect bind listen
+SystemCallErrorNumber=EPERM

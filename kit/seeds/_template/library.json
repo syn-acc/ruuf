@@ -1,0 +1,8 @@
+{
+  "authored": {
+    "from-above": ["What has been said from above", "orders"],
+    "atlas": ["Atlas of @WORLD@", "@WORLD@"]
+  },
+  "sources": {},
+  "public": ["atlas"]
+}
