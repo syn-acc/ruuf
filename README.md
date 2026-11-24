@@ -17,6 +17,8 @@ unmodified upstream agent runtime.
 | `ruu-lab/child/` | The child system: Ruu improves an open model and the host scores it. |
 | `kit/` | The same machine with the character taken out, plus a seed per agent, for making another agent like Ruu. |
 | `deploy/units/` | The systemd units as deployed. |
+| `ruuf.toml` | The manifest: the model ladder, the map of where everything lives, and the process table. |
+| `launcher/` | `ruufd`, the launcher that reads the manifest. A skeleton: it checks the manifest and answers questions about it, and starts nothing yet. |
 
 ## What is not here
 

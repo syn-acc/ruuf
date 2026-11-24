@@ -1,0 +1,236 @@
+# ruuf.toml: the manifest. What ruuf is made of and where everything lives.
+#
+# The launcher (launcher/ruufd.py) reads this and nothing else. It describes the deployment as it
+# runs today, so the paths are the server's. To describe another machine, override a var:
+#     RUUF_VAR_HOME=/tmp/scratch python launcher/ruufd.py where
+#
+# {root} is the folder this file is in. {name} is a var, or (in parts and providers) a place.
+
+[agent]
+id = "ruu"
+name = "Ruu"
+
+[vars]
+home = "/data/syn.gl/hermes"
+code = "{home}/plugins"
+python = "{home}/runtime/venv/bin/python"
+
+# ── the ladder ───────────────────────────────────────────────────────────────
+# The only thing ruuf insists on: one or more models, best first. Smart, slow and expensive at the
+# top; cheap, fast and dumb at the bottom. Nothing reads this yet: routes in ruu-lab/config.json
+# still name models. It is here so the next steps have one place to point at.
+
+[[ladder]]
+provider = "codex"
+model = "gpt-5.6-sol"
+effort = "high"
+
+[[ladder]]
+provider = "codex"
+model = "gpt-5.6-terra"
+effort = "medium"
+
+[[ladder]]
+provider = "codex"
+model = "gpt-5.6-luna"
+effort = "low"
+
+[providers.codex]
+bin = "{codex_bin}"
+home = "{codex_home}"
+client = "{runtime}"
+
+# ── the map ──────────────────────────────────────────────────────────────────
+# Names to places. `planned` places do not exist yet; they are named so that what comes next has
+# somewhere to go. `secret` places are never shown to the agent and never reachable from a sandbox.
+
+[places.persona]
+path = "{code}/discord-idle/persona.md"
+kind = "file"
+holds = "Who the agent is. Given on every turn that speaks."
+
+[places.convictions]
+path = "{code}/ruu-lab/dna.md"
+kind = "file"
+holds = "What the agent believes, as background it never recites."
+
+[places.config]
+path = "{home}/.hermes/ruu-lab.json"
+kind = "file"
+holds = "The soft machine's settings: channels, caps, drives, routes, budget."
+
+[places.idle_config]
+path = "{home}/.hermes/discord-idle.json"
+kind = "file"
+holds = "The idle poster's settings."
+
+[places.state]
+path = "{home}/.hermes/ruu-lab"
+holds = "What the soft machine remembers: outputs, orders, heard messages, the budget bucket."
+
+[places.idle_state]
+path = "{home}/.hermes/discord-idle"
+holds = "What the idle poster remembers: when it last spoke and to what."
+
+[places.frontier]
+path = "{home}/.hermes/ruu-lab/frontier"
+holds = "One digest a day of new papers, open models and tool versions."
+
+[places.library]
+path = "{code}/ruu-lab/library"
+holds = "What the agent may know and say, built from library_src."
+
+[places.decisions]
+path = "{home}/.hermes/ruu-lab/decisions.sqlite3"
+kind = "file"
+planned = true
+holds = "Every named decision: the question, the answer, who answered, how sure, what it cost."
+
+[places.rules]
+path = "{code}/ruu-lab/rules"
+planned = true
+holds = "Decisions that no longer need a model: one file of rules per decision."
+
+[places.logs]
+path = "{home}/.hermes/ruu-lab/logs"
+planned = true
+holds = "One stream of output per part. Today this is the systemd journal."
+
+[places.runtime]
+path = "{home}/runtime"
+holds = "The Hermes runtime. The Codex client is imported from here."
+
+[places.codex_bin]
+path = "{home}/.local/bin/codex"
+kind = "file"
+holds = "The Codex binary."
+
+[places.codex_home]
+path = "{home}/.codex"
+secret = true
+holds = "The Codex login and its settings."
+
+[places.env]
+path = "{home}/.hermes/.env"
+kind = "file"
+secret = true
+holds = "Tokens: the Discord bot token."
+
+[places.hands_socket]
+path = "/run/ruu-hands.sock"
+kind = "socket"
+holds = "Where the soft machine sends a job for the hands."
+
+[places.hands_code]
+path = "/opt/ruu-hands"
+holds = "The hands runner, installed where the sandbox can read it and nothing can change it."
+
+[places.hands_workspace]
+path = "/data/ruu-hands/workspace"
+holds = "The only folder the agent's own code can write to."
+
+[places.score_socket]
+path = "/run/ruu-score.sock"
+kind = "socket"
+holds = "Where a child's answers are sent to be scored."
+
+[places.score_code]
+path = "/opt/ruu-score"
+holds = "The scorer, out of the agent's reach."
+
+[places.child_home]
+path = "/data/ruu-child"
+holds = "The child system's runs, items and ledger."
+
+[places.child_code]
+path = "/opt/ruu-child"
+holds = "The child system's launcher."
+
+# ── the process table ────────────────────────────────────────────────────────
+# One entry per part. `unit` is what runs it today, under deploy/units/, until ruufd does.
+# `sandbox = true` marks a part that runs code the agent wrote: the launcher refuses a manifest
+# where one has network, touches a secret place, or shares a user with a part that reads secrets.
+# The limits listed are the headline ones. The units hold the full set, and they stay in force.
+
+[parts.soft-machine]
+about = "The agent's continuous daemon in its own channel."
+run = ["{python}", "{code}/ruu-lab/soft_machine.py", "--config", "{config}", "--daemon"]
+cwd = "{code}/ruu-lab"
+start = "always"
+user = "hermes"
+restart = "on-failure"
+restart_seconds = 15
+reads = ["persona", "convictions", "config", "library", "frontier", "runtime", "codex_bin", "codex_home", "env", "hands_socket", "score_socket"]
+writes = ["state", "codex_home"]
+limits = { memory_mb = 768, tasks = 128 }
+unit = "ruu-soft-machine.service"
+
+[parts.idle-poster]
+about = "One in-character line after a long human silence."
+run = ["{python}", "{code}/discord-idle/run.py", "--config", "{idle_config}", "--send"]
+cwd = "{code}/discord-idle"
+start = "timer"
+every_seconds = 60
+user = "hermes"
+reads = ["persona", "idle_config", "runtime", "codex_bin", "codex_home", "env"]
+writes = ["idle_state", "codex_home"]
+limits = { runtime_seconds = 240 }
+unit = "discord-idle.timer"
+
+[parts.frontier-scan]
+about = "The daily look outside."
+run = ["{python}", "{code}/ruu-lab/frontier_scan.py"]
+start = "timer"
+daily_at = "06:20"
+user = "hermes"
+writes = ["frontier"]
+limits = { memory_mb = 256, tasks = 16, runtime_seconds = 240 }
+unit = "ruu-frontier-scan.timer"
+
+[parts.hands]
+about = "One job of the agent's own code: no network, one workspace, a time and memory ceiling."
+run = ["/usr/bin/python3", "-I", "{hands_code}/runner.py"]
+start = "socket"
+socket = "hands_socket"
+user = "ruu-hands"
+sandbox = true
+reads = ["hands_code"]
+writes = ["hands_workspace"]
+limits = { network = false, memory_mb = 1024, tasks = 64, runtime_seconds = 150, jobs_at_once = 1 }
+unit = "ruu-hands.socket"
+
+[parts.score]
+about = "Scores a child's answers where the agent cannot reach."
+run = ["/usr/bin/python3", "-I", "{score_code}/runner.py"]
+start = "socket"
+socket = "score_socket"
+user = "ruu-score"
+sandbox = true
+reads = ["score_code"]
+limits = { network = false, memory_mb = 1024, tasks = 48, runtime_seconds = 90, jobs_at_once = 2 }
+unit = "ruu-score.socket"
+
+[parts.child-reap]
+about = "Stops rented machines the child system left running."
+run = ["{child_home}/venv/bin/python", "-W", "ignore", "{child_code}/launch.py", "reap"]
+cwd = "{child_home}"
+start = "timer"
+every_seconds = 900
+user = "ruu-child"
+reads = ["child_code"]
+writes = ["child_home"]
+unit = "ruu-child-reap.timer"
+
+[parts.gateway]
+about = "The Hermes gateway: the Discord adapter, colour roles, niche roles, meeting listener."
+run = ["{home}/.local/bin/hermes", "gateway"]
+cwd = "{home}/workspace"
+start = "always"
+user = "hermes"
+optional = true
+restart = "on-failure"
+restart_seconds = 5
+reads = ["runtime", "codex_bin", "codex_home", "env"]
+writes = ["codex_home"]
+limits = { memory_mb = 4096, tasks = 512 }
+unit = "bot-syn-gl.service"
