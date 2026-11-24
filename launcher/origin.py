@@ -159,7 +159,8 @@ def who_is_asking(machine, env=os.environ):
     except (ImportError, KeyError, OSError):
         pass
     try:
-        done = subprocess.run(["git", "-C", str(machine.manifest.parent), "config", "user.name"],
+        # --local: only this clone's own identity. The account's global one may be a private name.
+        done = subprocess.run(["git", "-C", str(machine.manifest.parent), "config", "--local", "user.name"],
                               capture_output=True, text=True, timeout=5)
         facts["git_name"] = done.stdout.strip() if done.returncode == 0 else ""
     except (OSError, subprocess.SubprocessError):

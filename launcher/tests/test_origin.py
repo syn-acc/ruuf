@@ -233,6 +233,7 @@ class Context(Case):
     def test_the_real_caller_can_be_looked_at_without_error(self):
         facts = origins.who_is_asking(self.m, env={})
         self.assertEqual(set(facts), set(OPERATOR))
+        self.assertEqual(facts["git_name"], "")  # not a clone: the account's own git name is not borrowed
         origins.context(self.m, facts)
 
 
