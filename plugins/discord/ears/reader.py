@@ -6,11 +6,13 @@ import json
 import os
 import re
 import sys
-import time
 import urllib.parse
-import requests
+from pathlib import Path
 
-API = "https://discord.com/api/v10"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import client  # noqa: E402  plugins/discord/client.py: the one way in and out of Discord
+
+AGENT = "DiscordBot (https://syn.gl, 1.0)"
 MAX_CONTENT = 4000
 MAX_SEARCH_PAGES = 5
 MAX_SEARCH_RESULTS = 20
@@ -42,38 +44,35 @@ def token():
     return value
 
 
+_discord = None
+
+
+def discord():
+    """The plugin's one client, built once from this reader's token."""
+    global _discord
+    if _discord is None:
+        _discord = client.Discord(token(), agent=AGENT)
+    return _discord
+
+
 def discord_request(method, path, params=None, payload=None, expect_json=True):
-    url = API + path
-    if params:
-        values = {k: v for k, v in params.items() if v is not None}
-        url += "?" + urllib.parse.urlencode(values)
-    headers = {"Authorization": f"Bot {token()}", "User-Agent": "DiscordBot (https://syn.gl, 1.0)"}
-    retries = 0
-    while True:
-        try:
-            response = requests.request(method, url, headers=headers, json=payload, timeout=15)
-            if response.status_code == 429:
-                try:
-                    required_delay = float(response.headers.get("Retry-After", "1"))
-                except (TypeError, ValueError):
-                    required_delay = 1.0
-                if required_delay > 2.0:
-                    raise RuntimeError("Discord rate limit exceeded; retry delay is over the 2 second limit")
-                if retries >= 2:
-                    raise RuntimeError("Discord rate limit exceeded after two retries")
-                try:
-                    time.sleep(max(required_delay, 0))
-                except (TypeError, ValueError):
-                    pass
-                retries += 1
-                continue
-            if not response.ok:
-                raise RuntimeError(f"Discord API request failed (HTTP {response.status_code})")
-            if not expect_json or response.status_code == 204:
-                return None
-            return response.json()
-        except requests.RequestException:
+    """One call through plugins/discord/client.py. A read is retried on a rate limit (twice, two
+    seconds at most); a write never is, so it cannot arrive twice."""
+    try:
+        reply = discord().request(method, path, params=params, json=payload)
+    except client.DiscordError as error:
+        if error.status == 429 and "longer wait" in str(error):
+            raise RuntimeError("Discord rate limit exceeded; retry delay is over the 2 second limit") from None
+        if error.status == 429 and "after two retries" in str(error):
+            raise RuntimeError("Discord rate limit exceeded after two retries") from None
+        if error.status is None:
             raise RuntimeError("Discord API request failed") from None
+        raise RuntimeError(f"Discord API request failed (HTTP {error.status})") from None
+    except ValueError:  # a reply that was not JSON
+        if expect_json:
+            raise RuntimeError("Discord API request failed") from None
+        return None
+    return reply if expect_json else None
 
 
 def discord_get(path, params=None):

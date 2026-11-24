@@ -22,7 +22,8 @@ from under the framework's.
 | `hermes/` | Patches and new files on top of [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) at the commit in `UPSTREAM_COMMIT`: Discord adapter and gateway changes, colour roles, niche roles, meeting listener, their tests. `apply.sh` rebuilds the runtime. |
 | `plugins/discord-idle/` | The idle poster: one in-character line after a long human silence. Holds `persona.md`. |
 | `plugins/discord-niches/` | Reaction-role menu for the server's niche groups. |
-| `plugins/discord-reader/` | MCP server that lets the agent read Discord channels, scoped to the requester. |
+| `plugins/discord/` | The one Discord plugin, a folder per interface. So far: its client, and `ears/`, the MCP server that lets the agent read Discord channels, scoped to the requester. |
+| `plugins/discord-reader/` | Where the reader was. A few lines are left to run it from the old path. |
 | `ruu-lab/` | The soft machine: Ruu's continuous daemon for its own channel, with standing orders, a library, a usage budget and model routes. |
 | `ruu-lab/hands/` | The sandbox Ruu runs code in: no network, one job per connection. |
 | `ruu-lab/legs/` | Work on rented machines elsewhere. Ruu sends the parameters of an experiment, never code; the host starts it, meters it and scores it. |

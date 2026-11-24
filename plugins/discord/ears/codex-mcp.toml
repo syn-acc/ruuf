@@ -1,4 +1,5 @@
 # Append outside the Hermes-managed config section. No credentials here.
+# These are the deployment's paths and still point at the old location, which runs reader.py.
 [mcp_servers.discord-reader]
 command = "/data/syn.gl/hermes/runtime/venv/bin/python"
 args = ["/data/syn.gl/hermes/plugins/discord-reader/scripts/discord_mcp.py"]

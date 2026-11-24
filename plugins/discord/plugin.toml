@@ -9,7 +9,7 @@ needs = ["env"]            # places, by name. The token is read from here and no
 
 [supplies.ears]
 about = "Hears the rooms: live messages, history, the meeting listener."
-state = "planned"          # today: plugins/discord-reader, and the listener inside hermes/overlay
+state = "here"             # ears/reader.py. The meeting listener is still inside hermes/overlay
 
 [supplies.voice]
 about = "Speaks: send and reply, and the idle timer. Carries words; has none of its own."

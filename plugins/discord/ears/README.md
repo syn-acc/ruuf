@@ -1,4 +1,13 @@
-# Sym's native Discord reader
+# Ears: the Discord reader
+
+The ears of the Discord plugin (`plugins/discord/`). `reader.py` is the MCP server; it was
+`plugins/discord-reader/scripts/discord_mcp.py`, and a few lines left at that path still run it.
+
+It reaches Discord only through `../client.py`. One thing changed with that: a write (a reaction,
+a reply, a pin) is never sent again after Discord says to slow down, where the reader used to retry
+every method. Reads keep the same rule: two retries, two seconds at most.
+
+The three tools that speak or act (react, reply, pin) sit here for now. They belong to `voice/`.
 
 The host-side MCP integration reuses the running Hermes bot's credentials. It
 needs no second bot, new token, browser login or marketplace registration.
@@ -14,7 +23,8 @@ The reader does not create a permanent message archive or embedding service.
 
 ## Runtime integration
 
-Install this directory at `/data/syn.gl/hermes/plugins/discord-reader`. The
+The deployment has this installed at `/data/syn.gl/hermes/plugins/discord-reader`, laid out as it
+was before the move (`scripts/discord_mcp.py`); `codex-mcp.toml` still names that path. The
 runtime venv supplies `requests`; `hermes_cli.config.load_env()` loads the existing
 token and owner allowlist inside the reader process, without forwarding the token
 through Codex or writing it to MCP configuration.
@@ -51,7 +61,7 @@ index. Attachment metadata is available; this does not transcribe voice calls or
 read every attachment automatically. Private-channel material must stay within
 its audience when Sym composes a reply.
 
-Use `python3 -m unittest discover -s tests -p test_discord_reader.py -q` for the
-focused offline checks. For deployment, additionally check real history and MCP
+Use `python -m unittest discover plugins/discord/tests` from the repository root for the
+offline checks. For deployment, additionally check real history and MCP
 tool discovery as the service user; perform one bounded real adapter turn to
 verify tool invocation by the model. Do not post a test message to Discord.

@@ -10,11 +10,11 @@ For where things are on a running machine, ask the launcher: `python launcher/ru
 | `ruuf.toml` | The manifest: every place and every part, by name. The launcher reads this and nothing else. |
 | `launcher/` | `ruufd`: knows what the parts are and where everything lives; starts and watches them. `origin.py` is what it demands from the operator before it starts anything. |
 | `routines/` | Rules written as programs. `ship.py` is how a change reaches main. |
-| `plugins/discord/` | The one Discord plugin, with a folder per interface it supplies (ears, voice, eyes, rooms). Only its client is here so far; the three older `discord-*` folders move in step by step. |
+| `plugins/discord/` | The one Discord plugin, with a folder per interface it supplies (ears, voice, eyes, rooms). Its client and its ears are here (`ears/reader.py` reads history on request, and for now also reacts, replies and pins when asked to); the two other `discord-*` folders move in step by step. |
 | `ruu-lab/` | The soft machine (the loop that speaks and works; it has eyes: it is shown the pictures its last run drew), the daily frontier scan, the convictions (`dna.md`), the library's sources, and the sandboxes it uses: `hands/` (runs the agent's own code, no network), `legs/` (work on rented machines elsewhere; Colab is the first kind) and `child/` (work on rented machines, with `child/scorebox/`, the judge it cannot reach). |
 | `plugins/discord-idle/` | The idle poster: one line after a long silence. Holds the persona. |
 | `plugins/discord-niches/` | The reaction-role menu for the server's niche groups. |
-| `plugins/discord-reader/` | Reads Discord history on request: the ears. It can also react, reply and pin when asked to. |
+| `plugins/discord-reader/` | Moved to `plugins/discord/ears/`. A few lines are left to run it from the old path. |
 | `hermes/` | The patch to the Hermes agent this deployment rides on, and files added to it: colour roles, niche roles, the meeting listener. `apply.sh` rebuilds the runtime. |
 | `deploy/units/` | The systemd units that run each part today. |
 | `kit/` | An older packaged copy of the lab. Behind the live code; do not treat it as the source. |

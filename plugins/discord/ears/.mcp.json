@@ -3,7 +3,7 @@
     "discord-reader": {
       "type": "stdio",
       "command": "python3",
-      "args": ["${__dirname}/scripts/discord_mcp.py"],
+      "args": ["${__dirname}/reader.py"],
       "env": {
         "DISCORD_BOT_TOKEN": "${DISCORD_BOT_TOKEN}"
       }
