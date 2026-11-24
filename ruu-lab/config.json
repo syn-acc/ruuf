@@ -184,5 +184,9 @@
   "lean_below_tokens_per_hour": 20000,
   "fallback_tokens_per_hour": 30000,
   "log_thread_id": "1574896456731467846",
-  "respond_context": 40
+  "respond_context": 40,
+  "legs": {
+    "enabled": true,
+    "every_hours": 4
+  }
 }
