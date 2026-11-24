@@ -1,0 +1,8 @@
+# Append outside the Hermes-managed config section. No credentials here.
+[mcp_servers.discord-reader]
+command = "/data/syn.gl/hermes/runtime/venv/bin/python"
+args = ["/data/syn.gl/hermes/plugins/discord-reader/scripts/discord_mcp.py"]
+env = { HERMES_HOME = "/data/syn.gl/hermes/.hermes" }
+env_vars = ["HERMES_SESSION_PLATFORM", "HERMES_SESSION_USER_ID", "HERMES_SESSION_CHAT_ID", "HERMES_SESSION_THREAD_ID"]
+startup_timeout_sec = 20.0
+tool_timeout_sec = 120.0
