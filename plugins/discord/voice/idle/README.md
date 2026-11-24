@@ -1,3 +1,22 @@
+# Voice: the idle poster
+
+Part of the voice of the Discord plugin (`plugins/discord/`). This was `plugins/discord-idle/`; a
+few lines left at `plugins/discord-idle/run.py` and `generate.py` still run it from there.
+
+It reaches Discord only through `../../client.py`, with nothing tried twice: a send is one attempt
+with its nonce, and a read is one attempt too, as before.
+
+The agent's own files did not move: `persona.md`, `questions.json` and the example config are
+still in `plugins/discord-idle/`. The persona is looked for where the launcher says
+(`RUUF_PLACE_PERSONA`), then beside `generate.py` (the deployment's layout), then in
+`plugins/discord-idle/` (this repository's layout).
+
+Still mixed in with the mechanism, to be split out: the writer's instructions in `generate.py`,
+the delivery wording in `variation.py` and `world_influence.py`, the channel name and news domains
+in `idle_questions.py`, and the feeds and interests in `world_news.py` all speak of one agent.
+
+    python -m unittest discover plugins/discord/tests
+
 # SCRU contextual idle questions
 
 A deterministic three-hour silence gate around one bounded AI writing turn for

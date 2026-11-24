@@ -8,27 +8,27 @@ import os
 from pathlib import Path
 import sys
 
-from idle_questions import checked_history, tick
-from generate import generate, preview_examples
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+import client  # noqa: E402  plugins/discord/client.py: the one way in and out of Discord
+
+from idle_questions import checked_history, tick  # noqa: E402
+from generate import generate, preview_examples  # noqa: E402
 
 
 class DiscordAPI:
-    def __init__(self, token):
-        import requests
-        self.session = requests.Session()
-        self.session.headers.update({"Authorization": "Bot " + token,
-                                     "User-Agent": "DiscordBot (https://syn.gl, 1.0)"})
+    """The four calls the idle poster makes, through the plugin's client. Nothing is tried twice:
+    not a send, and not a read either, as before."""
+
+    def __init__(self, token, session=None):
+        self.discord = client.Discord(token, session=session, agent="DiscordBot (https://syn.gl, 1.0)")
 
     def request(self, method, path, **kwargs):
-        import requests
         try:
-            response = self.session.request(method, "https://discord.com/api/v10" + path,
-                                            timeout=15, **kwargs)
-        except requests.RequestException:
-            raise RuntimeError("Discord network failure; delivery may be unresolved") from None
-        if not response.ok:
-            raise RuntimeError(f"Discord HTTP {response.status_code}; no automatic send retry")
-        return response.json()
+            return self.discord.request(method, path, retry=False, **kwargs)
+        except client.DiscordError as error:
+            if error.status is None:
+                raise RuntimeError("Discord network failure; delivery may be unresolved") from None
+            raise RuntimeError(f"Discord HTTP {error.status}; no automatic send retry") from None
 
     def channel(self, channel_id):
         return self.request("GET", f"/channels/{channel_id}")

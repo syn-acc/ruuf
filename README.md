@@ -20,9 +20,9 @@ from under the framework's.
 | Path | What it is |
 | --- | --- |
 | `hermes/` | Patches and new files on top of [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) at the commit in `UPSTREAM_COMMIT`: Discord adapter and gateway changes, colour roles, niche roles, meeting listener, their tests. `apply.sh` rebuilds the runtime. |
-| `plugins/discord-idle/` | The idle poster: one in-character line after a long human silence. Holds `persona.md`. |
+| `plugins/discord-idle/` | Holds `persona.md` and the agent's other files for the idle poster. Its code moved to `plugins/discord/voice/idle/`. |
 | `plugins/discord-niches/` | Reaction-role menu for the server's niche groups. |
-| `plugins/discord/` | The one Discord plugin, a folder per interface. So far: its client, and `ears/`, the MCP server that lets the agent read Discord channels, scoped to the requester. |
+| `plugins/discord/` | The one Discord plugin, a folder per interface. So far: its client; `ears/`, the MCP server that lets the agent read Discord channels, scoped to the requester; and `voice/idle/`, the idle poster: one in-character line after a long human silence. |
 | `plugins/discord-reader/` | Where the reader was. A few lines are left to run it from the old path. |
 | `ruu-lab/` | The soft machine: Ruu's continuous daemon for its own channel, with standing orders, a library, a usage budget and model routes. |
 | `ruu-lab/hands/` | The sandbox Ruu runs code in: no network, one job per connection. |

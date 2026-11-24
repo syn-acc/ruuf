@@ -13,7 +13,7 @@ state = "here"             # ears/reader.py. The meeting listener is still insid
 
 [supplies.voice]
 about = "Speaks: send and reply, and the idle timer. Carries words; has none of its own."
-state = "planned"          # today: plugins/discord-idle
+state = "here"             # voice/idle. The agent's own persona is still in plugins/discord-idle
 
 [supplies.eyes]
 about = "Pictures: the ones people post come in, the ones the agent makes go out."

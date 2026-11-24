@@ -103,10 +103,23 @@ On skip text and news_id are empty.
 """
 
 
+def agents_file(name, place_env=None, here=None):
+    """A file that is the agent's own and not this plugin's, such as its persona. In order: where
+    the launcher says it is (the variable named by `place_env`); beside this script, which is where the deployment
+    keeps it; then plugins/discord-idle/, which is where this repository keeps it for now."""
+    named = os.environ.get(place_env) if place_env else None
+    if named:
+        return Path(named)
+    here = Path(here) if here else Path(__file__).resolve().parent
+    beside = here / name
+    if beside.is_file():
+        return beside
+    return here.parents[2] / "discord-idle" / name
+
+
 def writer_instructions():
     """The user's original document is authoritative for character, verbatim."""
-    persona = Path(os.environ.get("RUUF_PLACE_PERSONA")
-                   or Path(__file__).with_name("persona.md")).read_text(encoding="utf-8")
+    persona = agents_file("persona.md", "RUUF_PLACE_PERSONA").read_text(encoding="utf-8")
     if not persona.strip() or len(persona) > 20000:
         raise ValueError("Missing or oversized Ruu persona")
     return (INSTRUCTIONS + "\n\nORIGINAL RUU CHARACTER SPECIFICATION:\n" + persona

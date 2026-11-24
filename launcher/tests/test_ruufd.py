@@ -451,7 +451,7 @@ class TheRepositoryManifest(unittest.TestCase):
     def test_each_part_declares_every_place_its_code_asks_for(self):
         repo = HERE.parent.parent
         code = {"soft-machine": ["ruu-lab/soft_machine.py"],
-                "idle-poster": ["plugins/discord-idle/run.py", "plugins/discord-idle/generate.py"],
+                "idle-poster": ["plugins/discord/voice/idle/run.py", "plugins/discord/voice/idle/generate.py"],
                 "frontier-scan": ["ruu-lab/frontier_scan.py"]}
         for name, files in code.items():
             text = "".join((repo / f).read_text(encoding="utf-8") for f in files)
