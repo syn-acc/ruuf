@@ -190,7 +190,7 @@ def context(machine, facts=None, env=os.environ):
         seen.append("nothing in this manifest is yours: you look like a visitor")
         return seen, guesses
     # The clone's git identity is the name the operator publishes under, so it is tried first.
-    name = facts["git_name"] or facts["full"] or (person if person != "root" else "")
+    name = next((n for n in (facts["git_name"], facts["full"], person) if n and n != "root"), "")
     if name:
         source = "this clone's git identity" if facts["git_name"] else "this machine's accounts"
         seen.append(f"{source} gives the name {name!r}")

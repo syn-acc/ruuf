@@ -202,7 +202,7 @@ class Context(Case):
         self.assertEqual(guesses["operator.name"], "Ada L")
 
     def test_bare_root_is_not_given_a_name(self):
-        _, guesses = origins.context(self.m, {**ROOT, "behind": "", "full": ""})
+        _, guesses = origins.context(self.m, {**ROOT, "behind": "", "full": "root"})
         self.assertNotIn("operator.name", guesses)
 
     def test_the_agents_own_account_is_not_a_person(self):
