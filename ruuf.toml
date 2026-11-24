@@ -29,6 +29,7 @@ users = ["root", "hermes"]
 checks = [
   ["{python}", "-m", "unittest", "discover", "launcher/tests"],
   ["{python}", "-m", "unittest", "discover", "routines/tests"],
+  ["{python}", "-m", "unittest", "discover", "plugins/discord/tests"],
   ["{python}", "launcher/ruufd.py", "check", "--host"],
 ]
 max_ahead = 3

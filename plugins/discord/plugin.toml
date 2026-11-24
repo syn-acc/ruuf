@@ -1,0 +1,24 @@
+# One plugin for one outside system. Each folder beside this file is an interface the plugin
+# supplies: a part of the body, as ruuf names them.
+
+[plugin]
+id = "discord"
+about = "Discord: where the agent hears, speaks, sees pictures and keeps its rooms."
+client = "client.py"
+needs = ["env"]            # places, by name. The token is read from here and nowhere else.
+
+[supplies.ears]
+about = "Hears the rooms: live messages, history, the meeting listener."
+state = "planned"          # today: plugins/discord-reader, and the listener inside hermes/overlay
+
+[supplies.voice]
+about = "Speaks: send and reply, and the idle timer. Carries words; has none of its own."
+state = "planned"          # today: plugins/discord-idle
+
+[supplies.eyes]
+about = "Pictures: the ones people post come in, the ones the agent makes go out."
+state = "planned"
+
+[supplies.rooms]
+about = "Keeps the place: colour roles, group roles, the welcome on a first visit."
+state = "planned"          # today: plugins/discord-niches, and colour roles inside hermes/overlay
