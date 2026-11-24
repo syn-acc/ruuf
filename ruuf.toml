@@ -94,7 +94,12 @@ holds = "Decisions that no longer need a model: one file of rules per decision."
 [places.logs]
 path = "{home}/.hermes/ruu-lab/logs"
 planned = true
-holds = "One stream of output per part. Today this is the systemd journal."
+holds = "One file of output per part the launcher runs. Parts still under systemd write to its journal."
+
+[places.launcher]
+path = "{home}/.hermes/ruufd"
+planned = true
+holds = "The launcher's own state: what it is running right now."
 
 [places.runtime]
 path = "{home}/runtime"
@@ -147,7 +152,8 @@ path = "/opt/ruu-child"
 holds = "The child system's launcher."
 
 # ── the process table ────────────────────────────────────────────────────────
-# One entry per part. `unit` is what runs it today, under deploy/units/, until ruufd does.
+# One entry per part. `unit` is what runs it today, under deploy/units/. The launcher refuses to
+# start a part that names one, so nothing here can be started twice.
 # `sandbox = true` marks a part that runs code the agent wrote: the launcher refuses a manifest
 # where one has network, touches a secret place, or shares a user with a part that reads secrets.
 # The limits listed are the headline ones. The units hold the full set, and they stay in force.

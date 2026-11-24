@@ -7,14 +7,19 @@ lives. It reads one manifest (`ruuf.toml`) and builds two things from it:
   the map            names to places. A part asks for "state" or "decisions" and never builds a path.
   the process table  one entry per part: its command, its user, how it starts, what it may touch.
 
-This is the skeleton. It checks the manifest and answers questions about it. It does not start
-anything yet: every part is still run by the unit named in its entry.
+It checks the manifest, answers questions about it, and can start and watch parts: always-on parts
+and timers, with restarts, time limits and one log per part. It will not start a part that still
+names a `unit`: that part belongs to systemd until its entry says otherwise. Socket parts (the
+sandboxes) are not started yet.
 
     python launcher/ruufd.py check            is the manifest sound
     python launcher/ruufd.py check --host     and does this machine match it
     python launcher/ruufd.py where [name]     a place on the map, or all of them
-    python launcher/ruufd.py status           the process table
+    python launcher/ruufd.py status           the process table, live if the launcher is running
     python launcher/ruufd.py map              the map as the agent may be shown it: no secret places
+    python launcher/ruufd.py run --all        start every part the launcher owns, and watch them
+    python launcher/ruufd.py run --only a b   or only these
+    python launcher/ruufd.py stop             stop the launcher and everything it started
 
 Standard library only.
 """
@@ -23,8 +28,12 @@ import json
 import os
 import re
 import shutil
+import signal
 import stat
+import subprocess
 import sys
+import time
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -231,6 +240,9 @@ def load(path, env=os.environ):
                 if place not in places:
                     say(f"{at}.{label}: no place called {place!r}")
         limits = spec.get("limits") or {}
+        if not isinstance(limits, dict):
+            say(f"{at}.limits: a table, such as {{ memory_mb = 256 }}")
+            limits = {}
         if spec.get("sandbox"):
             # A sandbox runs code the agent wrote. These three hold or the manifest is refused.
             if limits.get("network") is not False:
@@ -263,8 +275,9 @@ def load(path, env=os.environ):
     return Machine(path, dict(agent), places, tuple(ladder), providers, parts)
 
 
-def check_host(machine, user_exists=None):
-    """Compare the manifest with this computer. Returns a list of findings; empty means it matches."""
+def check_host(machine, user_exists=None, unseen=None):
+    """Compare the manifest with this computer. Returns a list of findings; empty means it matches.
+    What this user is not allowed to look at is not a finding: it is added to `unseen` if given."""
     if user_exists is None:
         import pwd
 
@@ -274,14 +287,15 @@ def check_host(machine, user_exists=None):
                 return True
             except KeyError:
                 return False
-    findings = []
+    findings, unseen = [], unseen if unseen is not None else []
     for place in machine.places.values():
         if place.planned:
             continue
         try:
             mode = os.stat(place.path).st_mode
         except PermissionError:
-            continue  # it is there; this user may not look, which is the point of some places
+            unseen.append(f"place {place.name}: {place.path}")
+            continue
         except OSError:
             findings.append(f"place {place.name}: nothing at {place.path}")
             continue
@@ -292,7 +306,13 @@ def check_host(machine, user_exists=None):
         note = " (optional)" if part.optional else ""
         if not user_exists(part.user):
             findings.append(f"part {part.name}: no user called {part.user}{note}")
-        if part.run and not (shutil.which(part.run[0]) or os.path.exists(part.run[0])):
+        if not part.run or shutil.which(part.run[0]):
+            continue
+        try:
+            os.stat(part.run[0])
+        except PermissionError:
+            unseen.append(f"part {part.name}: {part.run[0]} (it runs as {part.user})")
+        except OSError:
             findings.append(f"part {part.name}: cannot find {part.run[0]}{note}")
     return findings
 
@@ -305,6 +325,245 @@ def describe_start(part):
     return part.start
 
 
+# ── running things ───────────────────────────────────────────────────────────
+class Refused(RuntimeError):
+    """The launcher will not start this, and says why."""
+
+
+def next_daily(daily_at, now):
+    """The next HH:MM UTC after `now` (seconds since the epoch)."""
+    hour, minute = map(int, daily_at.split(":"))
+    moment = datetime.fromtimestamp(now, timezone.utc)
+    due = moment.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if due <= moment:
+        due += timedelta(days=1)
+    return due.timestamp()
+
+
+class Job:
+    """One row of the process table while the launcher is running."""
+
+    def __init__(self, part):
+        self.part = part
+        self.proc = None
+        self.state = "waiting"   # waiting | running | stopped | failed
+        self.started = None
+        self.deadline = None     # when limits.runtime_seconds runs out
+        self.due = 0.0           # when it next starts
+        self.runs = 0
+        self.last_exit = None
+        self.recent = []         # start times, to notice a part that cannot stay up
+        self.log = None
+
+    def row(self):
+        return {"part": self.part.name, "state": self.state, "pid": self.proc.pid if self.proc else None,
+                "started": self.started, "runs": self.runs, "last_exit": self.last_exit,
+                "next_due": self.due if self.state == "waiting" else None}
+
+
+class Supervisor:
+    """Starts the parts it is given, watches them, restarts them by their own rule, and stops them.
+
+    One loop, no threads: `step()` looks at every job once. `run()` calls it until told to stop.
+    """
+
+    FLAP = (5, 60.0)  # this many starts inside this many seconds and the part is left down
+
+    def __init__(self, machine, names, as_self=False, clock=time.time):
+        self.machine, self.clock, self.as_self = machine, clock, as_self
+        self.stopping = False
+        self.me = self._whoami()
+        for name in ("logs", "launcher"):
+            if name not in machine.places or machine.places[name].kind != "dir":
+                raise Refused(f"the manifest needs a place called {name!r} (a dir) before anything can run")
+        self.jobs = [Job(self._allowed(name)) for name in names]
+        if not self.jobs:
+            raise Refused("nothing to run: no part in this manifest is the launcher's to start")
+        self.state_file = machine.where("launcher") / "ruufd.json"
+
+    @staticmethod
+    def _whoami():
+        import pwd
+        return pwd.getpwuid(os.geteuid()).pw_name
+
+    def _allowed(self, name):
+        part = self.machine.parts.get(name)
+        if part is None:
+            raise Refused(f"no part called {name!r}")
+        if part.unit:
+            raise Refused(f"{name}: still run by {part.unit}. Two of it would both act. "
+                          "Stop that unit and remove `unit` from its entry to hand it to the launcher")
+        if part.start == "socket":
+            raise Refused(f"{name}: socket parts are sandboxes, and the launcher cannot yet apply their limits")
+        if part.start == "manual":
+            raise Refused(f"{name}: a manual part is started by hand")
+        if part.user != self.me and os.geteuid() != 0 and not self.as_self:
+            raise Refused(f"{name}: runs as {part.user}, and only root can start a part as someone else "
+                          f"(this is {self.me}; --as-self runs it as {self.me}, for scratch folders only)")
+        return part
+
+    # A part learns where its places are from its environment, and only the ones it declared.
+    def _env(self, part):
+        env = dict(os.environ)
+        env.update(RUUF_PART=part.name, RUUF_MANIFEST=str(self.machine.manifest), PYTHONUNBUFFERED="1")
+        for name in (*part.reads, *part.writes):
+            env["RUUF_PLACE_" + name.upper().replace("-", "_")] = str(self.machine.where(name))
+        return env
+
+    def _note(self, job, text):
+        stamp = datetime.fromtimestamp(self.clock(), timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        job.log.write(f"[ruufd {stamp}] {text}\n".encode())
+        job.log.flush()
+
+    def _start(self, job):
+        part, now = job.part, self.clock()
+        options = {}
+        if part.user != self.me and os.geteuid() == 0:
+            import pwd
+            who = pwd.getpwnam(part.user)
+            options = {"user": who.pw_uid, "group": who.pw_gid, "extra_groups": os.getgrouplist(part.user, who.pw_gid)}
+            env_home = {"HOME": who.pw_dir, "USER": part.user, "LOGNAME": part.user}
+        else:
+            env_home = {}
+        try:
+            job.proc = subprocess.Popen(part.run, cwd=part.cwd, env={**self._env(part), **env_home},
+                                        stdin=subprocess.DEVNULL, stdout=job.log, stderr=subprocess.STDOUT,
+                                        start_new_session=True, **options)
+        except OSError as exc:
+            job.state, job.last_exit = "failed", f"could not start: {exc.strerror or exc}"
+            self._note(job, job.last_exit)
+            return
+        job.state, job.started, job.runs = "running", now, job.runs + 1
+        limit = part.limits.get("runtime_seconds")
+        job.deadline = now + limit if limit else None
+        job.recent = [t for t in job.recent if now - t < self.FLAP[1]] + [now]
+        self._note(job, f"started pid {job.proc.pid} as {part.user if options else self.me}")
+
+    def _signal(self, job, sig):
+        try:
+            os.killpg(job.proc.pid, sig)  # its own session: this reaches everything it spawned
+        except ProcessLookupError:
+            pass
+
+    def _ended(self, job, code):
+        part, now = job.part, self.clock()
+        job.proc, job.last_exit, job.deadline = None, code, None
+        self._note(job, f"exited {code}")
+        if self.stopping:
+            job.state = "stopped"
+        elif part.start == "timer":
+            # Counted from when the run ended, as the timers it replaces do.
+            job.state = "waiting"
+            job.due = now + part.every_seconds if part.every_seconds else next_daily(part.daily_at, now)
+        elif part.restart == "always" or (part.restart == "on-failure" and code != 0):
+            if len(job.recent) >= self.FLAP[0]:
+                job.state = "failed"
+                self._note(job, f"{self.FLAP[0]} starts in {int(self.FLAP[1])}s: left down")
+            else:
+                job.state, job.due = "waiting", now + part.restart_seconds
+        else:
+            job.state = "stopped" if code == 0 else "failed"
+
+    def step(self):
+        now = self.clock()
+        for job in self.jobs:
+            if job.proc is not None:
+                code = job.proc.poll()
+                if code is not None:
+                    self._ended(job, code)
+                elif job.deadline and now >= job.deadline:
+                    self._note(job, f"over its {job.part.limits['runtime_seconds']}s limit: killed")
+                    self._signal(job, signal.SIGKILL)
+                    job.deadline = None
+            elif job.state == "waiting" and not self.stopping and now >= job.due:
+                self._start(job)
+        self._write_state()
+
+    def _write_state(self):
+        state = {"pid": os.getpid(), "manifest": str(self.machine.manifest), "at": self.clock(),
+                 "parts": [job.row() for job in self.jobs]}
+        text = json.dumps(state)
+        if text == getattr(self, "_last_state", None):
+            return
+        scratch = self.state_file.with_suffix(".tmp")
+        scratch.write_text(text, encoding="utf-8")
+        os.replace(scratch, self.state_file)
+        self._last_state = text
+
+    def open(self):
+        logs = self.machine.where("logs")
+        logs.mkdir(parents=True, exist_ok=True)
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        other = read_state(self.machine)
+        if other and other["alive"] and other["pid"] != os.getpid():
+            raise Refused(f"a launcher is already running for this manifest (pid {other['pid']})")
+        now = self.clock()
+        for job in self.jobs:
+            job.log = open(logs / f"{job.part.name}.log", "ab")
+            if job.part.start == "timer" and job.part.daily_at:
+                job.due = next_daily(job.part.daily_at, now)
+
+    def close(self, grace=10.0):
+        """Ask everything to stop, wait, then insist."""
+        self.stopping = True
+        for job in self.jobs:
+            if job.proc is not None:
+                self._signal(job, signal.SIGTERM)
+        end = time.monotonic() + grace
+        while any(job.proc is not None for job in self.jobs):
+            if time.monotonic() > end:
+                for job in self.jobs:
+                    if job.proc is not None:
+                        self._signal(job, signal.SIGKILL)
+                end = float("inf")
+            self.step()
+            time.sleep(0.05)
+        for job in self.jobs:
+            if job.state == "waiting":
+                job.state = "stopped"
+            if job.log:
+                job.log.close()
+        try:
+            self.state_file.unlink()
+        except OSError:
+            pass
+
+    def run(self, tick=0.5):
+        signal.signal(signal.SIGTERM, lambda *_: setattr(self, "stopping", True))
+        signal.signal(signal.SIGINT, lambda *_: setattr(self, "stopping", True))
+        self.open()
+        try:
+            while not self.stopping:
+                self.step()
+                time.sleep(tick)
+        finally:
+            self.close()
+        return 0
+
+
+def read_state(machine):
+    """What a running launcher last wrote, with whether it is still alive. None if there is none."""
+    place = machine.places.get("launcher")
+    if place is None:
+        return None
+    try:
+        state = json.loads((place.path / "ruufd.json").read_text(encoding="utf-8"))
+        os.kill(state["pid"], 0)
+        state["alive"] = True
+    except ProcessLookupError:
+        state["alive"] = False
+    except PermissionError:
+        state["alive"] = True  # it is there; it is someone else's
+    except (OSError, ValueError, KeyError):
+        return None
+    return state
+
+
+def owned(machine):
+    """The parts the launcher may start today: no unit holds them, and they are not sandboxes."""
+    return [p.name for p in machine.parts.values() if not p.unit and p.start in ("always", "timer")]
+
+
 def table(rows, heads):
     widths = [max(len(str(r[i])) for r in [heads, *rows]) for i in range(len(heads))]
     line = lambda r: "  ".join(str(c).ljust(w) for c, w in zip(r, widths)).rstrip()
@@ -312,7 +571,7 @@ def table(rows, heads):
 
 
 def main(argv=None, out=sys.stdout):
-    parser = argparse.ArgumentParser(prog="ruufd", description="The ruuf launcher (skeleton).")
+    parser = argparse.ArgumentParser(prog="ruufd", description="The ruuf launcher.")
     parser.add_argument("--manifest", help="path to ruuf.toml; default: $RUUF_MANIFEST, then the nearest one")
     sub = parser.add_subparsers(dest="command", required=True)
     c = sub.add_parser("check", help="is the manifest sound")
@@ -323,6 +582,13 @@ def main(argv=None, out=sys.stdout):
     s = sub.add_parser("status", help="the process table")
     s.add_argument("--json", action="store_true")
     sub.add_parser("map", help="the map as the agent may be shown it")
+    r = sub.add_parser("run", help="start parts and watch them, in the foreground")
+    which = r.add_mutually_exclusive_group(required=True)
+    which.add_argument("--all", action="store_true", help="every part the launcher owns")
+    which.add_argument("--only", nargs="+", metavar="PART")
+    r.add_argument("--as-self", action="store_true",
+                   help="run parts as the current user whatever their entry says; for scratch folders")
+    sub.add_parser("stop", help="stop the running launcher and everything it started")
     args = parser.parse_args(argv)
     say = lambda text="": print(text, file=out)
 
@@ -343,9 +609,14 @@ def main(argv=None, out=sys.stdout):
             f"{len(machine.places)} places, {len(machine.parts)} parts")
         if not args.host:
             return 0
-        findings = check_host(machine)
+        unseen = []
+        findings = check_host(machine, unseen=unseen)
+        if unseen:
+            say(f"{len(unseen)} thing(s) this user may not look at, so they were not checked:")
+            for item in unseen:
+                say("  " + item)
         if not findings:
-            say("this machine matches it")
+            say("this machine matches it" + (" as far as this user can see" if unseen else ""))
             return 0
         say(f"{len(findings)} difference(s) on this machine:")
         for finding in findings:
@@ -373,17 +644,53 @@ def main(argv=None, out=sys.stdout):
         return 0
 
     if args.command == "status":
+        live = read_state(machine)
+        live = live if live and live["alive"] else None
+        rows_live = {row["part"]: row for row in live["parts"]} if live else {}
+
+        def state_of(p):
+            row = rows_live.get(p.name)
+            if row:
+                extra = f" pid {row['pid']}" if row["pid"] else ""
+                if row["last_exit"] is not None and row["state"] != "running":
+                    extra += f" (last exit {row['last_exit']})"
+                return f"{row['state']}{extra}, {row['runs']} run(s)"
+            return f"systemd: {p.unit}" if p.unit else "not started"
         if args.json:
-            say(json.dumps([{"part": p.name, "start": describe_start(p), "user": p.user, "sandbox": p.sandbox,
-                             "run": list(p.run), "run_by": p.unit or None, "state": "not started by ruufd"}
-                            for p in machine.parts.values()], indent=2))
+            say(json.dumps({"launcher": {"running": bool(live), "pid": live["pid"] if live else None},
+                            "parts": [{"part": p.name, "start": describe_start(p), "user": p.user,
+                                       "sandbox": p.sandbox, "run": list(p.run), "run_by": p.unit or None,
+                                       "live": rows_live.get(p.name)} for p in machine.parts.values()]}, indent=2))
             return 0
-        rows = [(p.name, describe_start(p), p.user + (" (sandbox)" if p.sandbox else ""), p.unit or "-")
+        rows = [(p.name, describe_start(p), p.user + (" (sandbox)" if p.sandbox else ""), state_of(p))
                 for p in machine.parts.values()]
-        say(table(rows, ("part", "starts", "user", "run today by")))
+        say(table(rows, ("part", "starts", "user", "state")))
         say()
-        say("ruufd does not start processes yet. Each part is still run by the unit shown.")
+        say(f"launcher running, pid {live['pid']}" if live else "launcher not running")
         return 0
+
+    if args.command == "run":
+        try:
+            supervisor = Supervisor(machine, owned(machine) if args.all else args.only, as_self=args.as_self)
+            return supervisor.run()
+        except Refused as exc:
+            say(f"refused: {exc}")
+            return 1
+
+    if args.command == "stop":
+        live = read_state(machine)
+        if not live or not live["alive"]:
+            say("launcher not running")
+            return 1
+        os.kill(live["pid"], signal.SIGTERM)
+        for _ in range(150):
+            time.sleep(0.1)
+            now = read_state(machine)
+            if not now or not now["alive"]:
+                say(f"stopped launcher pid {live['pid']}")
+                return 0
+        say(f"launcher pid {live['pid']} was asked to stop and has not yet")
+        return 1
     return 2
 
 

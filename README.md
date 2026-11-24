@@ -18,7 +18,7 @@ unmodified upstream agent runtime.
 | `kit/` | The same machine with the character taken out, plus a seed per agent, for making another agent like Ruu. |
 | `deploy/units/` | The systemd units as deployed. |
 | `ruuf.toml` | The manifest: the model ladder, the map of where everything lives, and the process table. |
-| `launcher/` | `ruufd`, the launcher that reads the manifest. A skeleton: it checks the manifest and answers questions about it, and starts nothing yet. |
+| `launcher/` | `ruufd`, the launcher that reads the manifest. It checks the manifest, answers questions about it, and can start and watch parts. On the deployment it starts nothing yet: every part still belongs to its unit. |
 
 ## What is not here
 
