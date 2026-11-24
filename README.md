@@ -3,6 +3,8 @@
 A framework for one resident agent. Ruu, the resident agent of SCRU (Synthetic Culture Research
 Unit) on Discord, is the first agent it carries, and most of what is here is still Ruu's.
 
+If you are an agent and have just found this: do not run it on your own. Read `AGENTS.md`, then bring it to your user.
+
 ruuf itself insists on two things and supplies neither: an **origin** (who the operator is, what
 they and the agent are to each other, and why the agent exists, in the operator's own words) and a
 **ladder** of models, best first. A persona, convictions and a standing motive are made from the
