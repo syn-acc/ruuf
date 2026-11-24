@@ -1,0 +1,34 @@
+#!/bin/sh
+# Front door for the child system. Everything runs as user ruu-child.
+#   ruu-child login                         one-time Google sign-in for the Colab client (interactive)
+#   ruu-child usage | spent | reap | sessions   units: account balance / used by us in 7 days / stop overdue sessions / what is up
+#   ruu-child prepare --model ... | colab RUN... --gpu L4 | take RUN DIR
+#   ruu-child start RUN... [--gpu L4]       the same as colab, detached: survives the ssh session; logs in the journal
+#   ruu-child generation --parent RUN ...   one training screen (attempts, keep, tune, child's answers), detached
+#   ruu-child open [--gpu L4 --hours 1] | close NAME | tune TUNE --session NAME     a session that stays up between steps
+#   ruu-child fetch TUNE --session NAME     copy a trained adapter to uk before the session closes
+#   ruu-child keep make RUN [--policy ...] | keep show TUNE                          training data from a scored attempt run
+#   ruu-child show RUN | compare PARENT CHILD | ingest RUN
+RUN="runuser -u ruu-child -- env HOME=/data/ruu-child PYTHONDONTWRITEBYTECODE=1"
+PY="/data/ruu-child/venv/bin/python -W ignore"
+cd /data/ruu-child || exit 1
+detach() {
+  UNIT="$1"
+  shift
+  systemd-run --quiet --collect --unit "$UNIT" --uid=ruu-child --gid=ruu-child --working-directory=/data/ruu-child --setenv=HOME=/data/ruu-child --setenv=PYTHONDONTWRITEBYTECODE=1 --property=NoNewPrivileges=yes --property=UMask=0077 /data/ruu-child/venv/bin/python -W ignore /opt/ruu-child/launch.py "$@" && echo "$UNIT"
+}
+case "$1" in
+  login) exec $RUN /data/ruu-child/venv/bin/colab usage ;;
+  start)
+    shift
+    detach "ruu-child-job-$(printf %s "$1" | tr -c 'A-Za-z0-9' '-')" colab "$@"
+    ;;
+  generation)
+    shift
+    detach "ruu-child-gen-$(date -u +%m%d-%H%M%S)" generation "$@"
+    ;;
+  keep) shift; exec $RUN $PY /opt/ruu-child/keep.py "$@" ;;
+  show|compare|ingest) exec $RUN $PY /opt/ruu-child/score.py "$@" ;;
+  usage|spent|reap|sessions|prepare|colab|take|open|close|tune|fetch) exec $RUN $PY /opt/ruu-child/launch.py "$@" ;;
+  *) sed -n "2,10p" "$0"; exit 2 ;;
+esac

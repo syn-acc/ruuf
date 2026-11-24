@@ -1,0 +1,19 @@
+{
+  "models": [
+    "Qwen/Qwen3.5-0.8B",
+    "Qwen/Qwen3.5-2B",
+    "Qwen/Qwen3.5-4B",
+    "Qwen/Qwen3.5-9B",
+    "google/gemma-4-E4B-it",
+    "google/gemma-4-12b-it"
+  ],
+  "gpus": ["T4", "L4", "A100"],
+  "max_hours": 3,
+  "units_per_week": 60,
+  "nominal_units_per_hour": {"T4": 1.2, "L4": 1.94, "A100": 5.5},
+  "engine_packages": ["vllm"],
+  "tune_packages": ["peft"],
+  "max_new_tokens": 8192,
+  "max_samples": 16,
+  "tune": {"max_examples": 20000, "max_epochs": 4, "max_rank": 64, "max_lr": 0.001}
+}

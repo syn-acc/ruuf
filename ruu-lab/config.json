@@ -1,0 +1,191 @@
+{
+  "enabled": true,
+  "guild_id": "1429742642505191556",
+  "lab_channel_id": "1573069265584652401",
+  "etc_channel_id": "1429742643562287238",
+  "bot_id": "531798682350256128",
+  "owner_id": "000000000000000000",
+  "poll_seconds": 4,
+  "debounce_seconds": 6,
+  "daily_target": 36,
+  "daily_max": 150,
+  "hourly_max": 10,
+  "turns_hourly_max": 60,
+  "work_share": 0.8,
+  "work_gap_minutes": [
+    4,
+    9
+  ],
+  "self_orders_daily_max": 6,
+  "drives_daily_max": 8,
+  "drives": [
+    {
+      "title": "make things worth finding",
+      "brief": "Standing motive: media that makes a stranger want to find SCRU. Use your hands to make one small finished artefact: a picture built by code, a page, a text, a tiny program. It must stand on its own with no explanation and carry the name SCRU somewhere honest. Put the finished piece in public/. Look at what public/ already holds and make something different."
+    },
+    {
+      "title": "OpenRSI, one honest run further",
+      "brief": "Standing motive: the OpenRSI bench (see hands.openrsi_bench). One change to the training per run, scored by the host on held-out data. Pick up from the best scored run, keep what improved, drop what did not. If the last several runs failed to beat the best, change the approach, not the wording."
+    }
+  ],
+  "weekly_ceiling_percent": 60,
+  "models": [
+    [
+      "gpt-5.6-sol",
+      "low",
+      3
+    ],
+    [
+      "gpt-5.6-sol",
+      "medium",
+      1
+    ],
+    [
+      "gpt-5.6-terra",
+      "low",
+      3
+    ],
+    [
+      "gpt-5.6-terra",
+      "medium",
+      1
+    ],
+    [
+      "gpt-5.6-luna",
+      "low",
+      3
+    ],
+    [
+      "gpt-5.6-luna",
+      "medium",
+      2
+    ]
+  ],
+  "routes": {
+    "plan": [
+      [
+        "gpt-5.6-sol",
+        "high",
+        1
+      ]
+    ],
+    "review": [
+      [
+        "gpt-5.6-sol",
+        "medium",
+        1
+      ]
+    ],
+    "build": [
+      [
+        "gpt-5.6-terra",
+        "medium",
+        3
+      ],
+      [
+        "gpt-5.6-sol",
+        "low",
+        2
+      ],
+      [
+        "gpt-5.6-luna",
+        "medium",
+        2
+      ]
+    ],
+    "voice": [
+      [
+        "gpt-5.6-luna",
+        "medium",
+        2
+      ],
+      [
+        "gpt-5.6-terra",
+        "low",
+        2
+      ],
+      [
+        "gpt-5.6-sol",
+        "low",
+        1
+      ]
+    ],
+    "respond": [
+      [
+        "gpt-5.6-luna",
+        "low",
+        3
+      ],
+      [
+        "gpt-5.6-terra",
+        "low",
+        1
+      ],
+      [
+        "gpt-5.6-sol",
+        "low",
+        1
+      ]
+    ],
+    "study": [
+      [
+        "gpt-5.6-luna",
+        "low",
+        1
+      ]
+    ]
+  },
+  "routes_lean": {
+    "plan": [
+      [
+        "gpt-5.6-sol",
+        "medium",
+        1
+      ]
+    ],
+    "review": [
+      [
+        "gpt-5.6-terra",
+        "medium",
+        1
+      ]
+    ],
+    "build": [
+      [
+        "gpt-5.6-luna",
+        "medium",
+        2
+      ],
+      [
+        "gpt-5.6-terra",
+        "low",
+        1
+      ]
+    ],
+    "voice": [
+      [
+        "gpt-5.6-luna",
+        "low",
+        1
+      ]
+    ],
+    "respond": [
+      [
+        "gpt-5.6-luna",
+        "low",
+        1
+      ]
+    ],
+    "study": [
+      [
+        "gpt-5.6-luna",
+        "low",
+        1
+      ]
+    ]
+  },
+  "tokens_per_percent": 150000,
+  "burst_hours": 1.5,
+  "lean_below_tokens_per_hour": 20000,
+  "fallback_tokens_per_hour": 30000
+}
