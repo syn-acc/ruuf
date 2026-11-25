@@ -1,10 +1,10 @@
 #!/bin/sh
 # Install the pinned RCC bundle on the controller. A single verified CLI file is also accepted.
 set -eu
-revision=538d8f548a1590c80dc2ca5a0ddad476bf6b07f7
-bundle=3352a7fc7657a67f7097dd1b9c011198907f8f8968e3f2d15758b676d57b1c83
-installer=b57ef9c456464c8fe30fcf71c1f579d54d2ef18b873b99db33dae93a9530119b
-client=d9eeb843794a1a6c424404e61ff210d253ef3f2930955da5cc96e4e9e606f62d
+revision=0b0550aeb75ec7aae437ea5ff4e809ad32c1246c
+bundle=7ab384b6c4b858fea8a2789c9c8e5837eadf2bea253f09de615573b8a1d3f524
+installer=288d268c537c6570cd12ef36a69ca42dfb3b16b2d7e7400c772f15ee26c87ac9
+client=88e9cf5ab6e813c94f966c330cfea9b7fb0d01dfb3c25f1f54776e82369eb2b5
 target=${RCC_INSTALL_PATH:-/usr/local/bin/rcc}
 if [ "$#" -gt 1 ]; then
     echo "usage: $0 [RCC-checkout-or-client-file]" >&2
@@ -32,12 +32,12 @@ fi
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 if [ "$#" -eq 1 ]; then
-    cp -Rp "$1/rcc" "$1/install.py" "$1/plugins" "$stage/"
+    cp -Rp "$1/rcc" "$1/rccd" "$1/install.py" "$1/plugins" "$stage/"
 else
     git init -q "$stage/repo"
     git -C "$stage/repo" fetch --quiet --depth 1 https://github.com/syn-acc/rcc.git "$revision"
     test "$(git -C "$stage/repo" rev-parse FETCH_HEAD)" = "$revision"
-    git -C "$stage/repo" archive --output="$stage/payload.tar" "$revision" -- rcc install.py plugins
+    git -C "$stage/repo" archive --output="$stage/payload.tar" "$revision" -- rcc rccd install.py plugins
     tar -xf "$stage/payload.tar" -C "$stage"
 fi
 check_file "$installer" "$stage/install.py"

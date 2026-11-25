@@ -98,8 +98,11 @@ On a Linux controller with an existing legs broker, install the client as root f
 sudo sh ruu-lab/legs/install-rcc.sh
 python3 launcher/ruufd.py where rcc_bin
 sudo -u hermes /usr/local/bin/rcc providers
+sudo -u hermes /usr/local/bin/rcc nodes
 sudo -u hermes /usr/local/bin/rcc status
 ```
+
+For custom PCs, run `rccd connect` on each worker and give each PC a named socket profile on the controller. An operator can submit a job to a connected PC and retrieve its receipt. [Worker enrollment and smoke test](https://github.com/syn-acc/rcc/blob/main/PROVIDERS.md#connect-a-pc-with-rccd)
 
 For a new controller, the legs setup script includes the same installer. Instances with custom locations can set `RUUF_PLACE_RCC_BIN` and `RUUF_PLACE_LEGS_SOCKET` for the resident. The hands sandbox has no broker socket. The soft machine’s `--dry-legs` option exercises one model decision without posting to Discord or starting a compute job. This uses the resident’s configured model.
 
