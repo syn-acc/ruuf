@@ -167,7 +167,7 @@ holds = "The only folder the agent's own code can write to."
 [places.rcc_bin]
 path = "/usr/local/bin/rcc"
 kind = "file"
-holds = "Ruu Compute Controller, the client the resident uses for its legs. Install the pinned release with ruu-lab/legs/install-rcc.sh."
+holds = "Ruu Compute Controller, the client the resident uses for its legs. Install the pinned provider bundle with ruu-lab/legs/install-rcc.sh."
 
 [places.legs_socket]
 path = "/run/ruu-legs.sock"

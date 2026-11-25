@@ -54,6 +54,35 @@ class ResidentRccTest(unittest.TestCase):
         self.assertEqual([call.args[0][3] for call in self.rcc.call_args_list], ["status", "plan"])
         self.assertEqual(resident.kv_get(self.db, "legs", {}), {})
 
+    def test_planner_uses_only_current_openrsi_offers(self):
+        compatible = {"workload": "ruuf.openrsi.v1", "families": {}, "params": {}}
+        kinds = {"lab": compatible, "docker": {"workload": "container-job"},
+                 "incomplete": {"workload": "ruuf.openrsi.v1", "families": {}}}
+        history = [{"id": "lab:1", "kind": "lab"}, {"id": "docker:2", "kind": "docker"}]
+        advertised = {**STATUS, "kinds": kinds, "recent": history, "running": history}
+        self.turn.return_value = (dict(go=True, why=WHY, kind="lab", **PARAMS), None, {}, 0)
+        with patch.object(resident, "rcc_ask", side_effect=[advertised, {"ok": True, "dry": True}]) as ask:
+            self.assertTrue(resident.legs_plan(None, self.db, self.cfg, dry=True)["reply"]["ok"])
+            self.assertEqual(ask.call_args.args, ("plan",))
+            self.assertEqual(ask.call_args.kwargs["provider"], "lab")
+        schema = self.turn.call_args.kwargs["schema"]
+        material = json.loads(self.turn.call_args.args[3].split("\n", 1)[1])
+        self.assertEqual(schema["properties"]["kind"]["enum"], ["lab"])
+        self.assertEqual(list(material["legs"]), ["lab"])
+        self.assertEqual(material["running"], history[:1])
+        self.assertEqual(material["recent"], history[:1])
+        with patch.object(resident, "rcc_ask", return_value=STATUS) as ask:
+            for dry in (True, False):
+                self.assertFalse(resident.legs_plan(None, self.db, self.cfg, dry=dry)["reply"]["ok"])
+            self.assertEqual([call.args for call in ask.call_args_list], [("status",), ("status",)])
+            self.assertNotIn("pending_run", resident.kv_get(self.db, "legs", {}))
+            self.assertEqual(self.turn.call_args.kwargs["schema"]["properties"]["kind"]["enum"], ["colab"])
+            self.assertEqual(schema["properties"]["kind"]["enum"], ["lab"])
+        self.turn.reset_mock()
+        with patch.object(resident, "rcc_ask", return_value={**STATUS, "kinds": {"docker": kinds["docker"]}}):
+            self.assertIsNone(resident.legs_plan(None, self.db, self.cfg))
+        self.turn.assert_not_called()
+
     def test_missing_paid_receipt_holds_across_restart_until_verified(self):
         reopened = self.enterContext(closing(resident.open_db()))
 

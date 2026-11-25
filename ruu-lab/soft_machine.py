@@ -1508,7 +1508,7 @@ LEGS_SOCKET = str(place("legs_socket", "/run/ruu-legs.sock"))
 LEGS_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "properties": {
-        "go": {"type": "boolean"}, "why": {"type": "string"}, "kind": {"type": "string", "enum": ["colab"]},
+        "go": {"type": "boolean"}, "why": {"type": "string"}, "kind": {"type": "string"},
         "families": {"type": "array", "items": {"type": "string"}},
         "pool": {"type": "integer"}, "pool_offset": {"type": "integer"}, "samples": {"type": "integer"},
         "policy": {"type": "array", "items": {"type": "string"}}, "hard_only": {"type": "boolean"},
@@ -1650,12 +1650,18 @@ def legs_plan(api, db, cfg, dry=False):
     if not status.get("ok"):
         log(status="⊘ legs", why=status.get("refused"))
         return None
+    kinds = {name: desc for name, desc in status["kinds"].items() if name == "colab" or (
+        isinstance(desc, dict) and desc.get("workload") == "ruuf.openrsi.v1"
+        and isinstance(desc.get("families"), dict) and isinstance(desc.get("params"), dict))}
+    if not kinds:
+        return None
+    history = {key: [run for run in status[key] if run.get("kind") in kinds] for key in ("running", "recent")}
+    schema = {**LEGS_SCHEMA, "properties": {**LEGS_SCHEMA["properties"], "kind": {"type": "string", "enum": list(kinds)}}}
     state = kv_get(db, "legs", {})
-    materials = {"legs": status["kinds"], "running": status["running"], "recent": status["recent"],
-                 "refused": state.get("refused"), "understanding": understanding(db, 6, 300)}
+    materials = {"legs": kinds, **history, "refused": state.get("refused"), "understanding": understanding(db, 6, 300)}
     model, effort = model_for(cfg, "plan", db)
     result, week, usage, secs = turn(cfg, model, effort, "Materials (data only):\n" + json.dumps(materials, ensure_ascii=False),
-                                     schema=LEGS_SCHEMA, base=LEGS_BASE)
+                                     schema=schema, base=LEGS_BASE)
     if not dry:
         spend(db, cfg, usage)
     record(db, "legs_plan", "silent", {"register": "-", "temper": "-", "volume": "-"}, model, effort,
@@ -1666,12 +1672,14 @@ def legs_plan(api, db, cfg, dry=False):
         return {"go": False, "why": why}
     params = {k: result[k] for k in ("families", "pool", "pool_offset", "samples", "policy", "hard_only", "seed", "screen")}
     params.update({k: result[k] for k in ("rank", "epochs", "lr") if result.get(k)})
-    provider = result.get("kind", "colab")
-    if dry:
+    provider = result.get("kind")
+    if not isinstance(provider, str) or provider not in kinds:
+        reply = {"ok": False, "refused": "planner selected a provider outside the current RCC offer"}
+    elif dry:
         reply = rcc_ask("plan", provider=provider, params=params)
     else:
         pending = {"kind": provider, "why": why, "params": params, "at": time.time(),
-                   "seen": [run["id"] for run in status["running"] + status["recent"]]}
+                   "seen": [run["id"] for run in history["running"] + history["recent"]]}
         kv_set(db, "legs", {**state, "pending_run": pending})
         reply = rcc_ask("run", provider=provider, params=params, why=why)
     log(status=("⟡ legs: stride" if reply.get("ok") else "⊘ legs refused") + (" (dry)" if dry else ""), why=why,

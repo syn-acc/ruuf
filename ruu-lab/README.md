@@ -90,13 +90,14 @@ stranger to SCRU, and the OpenRSI toy loop.
 
 ### Remote compute with RCC
 
-RCC (Ruu Compute Controller) is the interface Ruu uses for its legs. Hands execute code in the local sandbox. On a legs turn, the host calls `rcc status` and shows Ruu the available providers, parameters, limits and recent results. Ruu may propose a run or pass. For a proposal, the host translates the structured decision into `rcc plan` on a dry turn or `rcc run` on a scheduled live turn. It follows the returned run ID with `rcc result`. The broker enforces the budget and the controller scores the answers. Colab is the current provider. [RCC CLI and parameter examples](https://github.com/syn-acc/rcc#readme)
+RCC (Ruu Compute Controller) is the interface Ruu uses for its legs. Hands execute code in the local sandbox. On a legs turn, the host calls `rcc status` and shows Ruu the available providers, parameters, limits and recent results. Ruu may propose a run or pass. For a proposal, the host translates the structured decision into `rcc plan` on a dry turn or `rcc run` on a scheduled live turn. It follows the returned run ID with `rcc result`. The broker enforces the budget and the controller scores the answers. The default training provider is Colab. The planner discovers additional profiles on each compute turn when the operator enrolls them and their status advertises the same scored training workload. Generic container and managed jobs remain available through the operator CLI. [RCC CLI and parameter examples](https://github.com/syn-acc/rcc#readme)
 
-On a Linux controller with an existing legs broker, install the client as root from the RUUF checkout. The installer verifies the pinned upstream executable before replacing it. For an offline installation, pass the path to the matching RCC executable as its only argument.
+On a Linux controller with an existing legs broker, install the client as root from the RUUF checkout. The installer verifies the pinned RCC bundle and installs its drivers together. For an offline installation, pass the matching RCC checkout as its only argument. Passing only the RCC executable installs the standalone broker client.
 
 ```sh
 sudo sh ruu-lab/legs/install-rcc.sh
 python3 launcher/ruufd.py where rcc_bin
+sudo -u hermes /usr/local/bin/rcc providers
 sudo -u hermes /usr/local/bin/rcc status
 ```
 
