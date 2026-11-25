@@ -88,6 +88,22 @@ drive returns as a build order (no announcement), up to `drives_daily_max` a day
 so there is always something to build. Current drives: memetic media that leads a
 stranger to SCRU, and the OpenRSI toy loop.
 
+### Remote compute with RCC
+
+RCC (Ruu Compute Controller) is the interface Ruu uses for its legs. Hands execute code in the local sandbox. On a legs turn, the host calls `rcc status` and shows Ruu the available providers, parameters, limits and recent results. Ruu may propose a run or pass. For a proposal, the host translates the structured decision into `rcc plan` on a dry turn or `rcc run` on a scheduled live turn. It follows the returned run ID with `rcc result`. The broker enforces the budget and the controller scores the answers. Colab is the current provider. [RCC CLI and parameter examples](https://github.com/syn-acc/rcc#readme)
+
+On a Linux controller with an existing legs broker, install the client as root from the RUUF checkout. The installer verifies the pinned upstream executable before replacing it. For an offline installation, pass the path to the matching RCC executable as its only argument.
+
+```sh
+sudo sh ruu-lab/legs/install-rcc.sh
+python3 launcher/ruufd.py where rcc_bin
+sudo -u hermes /usr/local/bin/rcc status
+```
+
+For a new controller, the legs setup script includes the same installer. Instances with custom locations can set `RUUF_PLACE_RCC_BIN` and `RUUF_PLACE_LEGS_SOCKET` for the resident. The hands sandbox has no broker socket. The soft machine’s `--dry-legs` option exercises one model decision without posting to Discord or starting a compute job. This uses the resident’s configured model.
+
+If a paid submission loses its receipt, RUUF pauses new submissions and records the pending request. Check the broker’s `rcc status` and the journal. From the soft-machine CLI, use `--config CONFIG --resolve-legs RUN_ID` to adopt a verified matching run. Use `--resolve-legs none` only after confirming that no job was launched. Both operations resume the existing schedule.
+
 ### The OpenRSI bench
 
 Installed 2026-11-19 after Ruu "trained" a two-parameter line for four runs by

@@ -16,7 +16,9 @@ import random
 import re
 import socket
 import sqlite3
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import tomllib
@@ -535,16 +537,23 @@ def log(**event):
     print(json.dumps(event, ensure_ascii=False), flush=True)
 
 
-def instructions(lean=False, room=False):
+RCC_ACCESS = ("Remote compute is available through the host's Ruu Compute Controller (RCC). "
+              "At scheduled planning turns you choose an experiment from the broker's current providers and "
+              "parameters. The host checks or submits that choice and retrieves its result by ID. "
+              "Local hands cannot invoke RCC. Report a launch or outcome only from a host receipt or result.")
+
+
+def instructions(lean=False, room=False, compute=False):
     """The whole character for turns that speak; the rules alone for turns that mostly write code or
     plans. The character papers are about 3,000 tokens, and a build step does not need them."""
+    core = INSTRUCTIONS + ("\n\n" + RCC_ACCESS if compute else "")
     if lean:
-        return INSTRUCTIONS + "\n\n" + REGISTER
+        return core + "\n\n" + REGISTER
     persona = PERSONA.read_text(encoding="utf-8")
     dna = CONVICTIONS.read_text(encoding="utf-8")
     if not persona.strip() or len(persona) > 20000 or len(dna) > 6000:
         raise ValueError("Missing or oversized persona/dna")
-    return (INSTRUCTIONS + "\n\nORIGINAL RUU CHARACTER SPECIFICATION:\n" + persona
+    return (core + "\n\nORIGINAL RUU CHARACTER SPECIFICATION:\n" + persona
             + "\n\nRUU CONVICTIONS (background, never recited):\n" + dna + "\n\n"
             + (ROOM_REGISTER if room else REGISTER))
 
@@ -1156,7 +1165,7 @@ def turn(cfg, model, effort, prompt, schema=None, lean=False, base=None, images=
         thread = client.request("thread/start", {
             "model": model, "ephemeral": True, "cwd": str(STATE), "approvalPolicy": "never",
             "permissions": "scru-writer", "environments": [], "dynamicTools": [],
-            "baseInstructions": base or instructions(lean)}, timeout=15)["thread"]["id"]
+            "baseInstructions": base or instructions(lean, compute=(cfg.get("legs") or {}).get("enabled") is True)}, timeout=15)["thread"]["id"]
         seen = [{"type": "image", "url": "data:image/png;base64," + base64.b64encode(image).decode()}
                 for image in images or []]
         client.request("turn/start", {"threadId": thread, "input": [{"type": "text", "text": prompt}] + seen,
@@ -1494,6 +1503,7 @@ def eyes_look(db, dry=False):
 # Hands run Ruu's own code here, with no network. Legs are the other trade: real compute elsewhere,
 # but Ruu sends only the parameters of an experiment. The legs service (root-owned, behind a socket)
 # starts it, meters it and reads back a score that was computed on this machine.
+RCC_BIN = str(place("rcc_bin", "/usr/local/bin/rcc"))
 LEGS_SOCKET = str(place("legs_socket", "/run/ruu-legs.sock"))
 LEGS_SCHEMA = {
     "type": "object", "additionalProperties": False,
@@ -1508,8 +1518,12 @@ LEGS_SCHEMA = {
     "required": ["go", "why", "kind", "families", "pool", "pool_offset", "samples", "policy", "hard_only", "seed",
                  "screen", "rank", "epochs", "lr"],
 }
-LEGS_BASE = """You are the planning mind of Ruu, an agent that improves open models and proves it. You are choosing
+LEGS_BASE = RCC_ACCESS + "\n\n" + """You are the planning mind of Ruu, an agent that improves open models and proves it. You are choosing
 the next STRIDE: one experiment on rented compute. Return one JSON decision.
+
+The host has already called `rcc status`. Choose `kind` from its providers and fill in the experiment
+parameters. In a preview the host calls `rcc plan`. On a live turn, `go: true` submits once with
+`rcc run`; the host follows the ID with `rcc result`. A refusal means the broker declined the request.
 
 `legs` describes each kind of legs: what a stride does, what it costs, the parameters you may set and
 their ranges, the baseline per family, and notes from earlier work. `running` and `recent` are strides
@@ -1527,27 +1541,83 @@ How to choose:
 Set every field. rank, epochs and lr: 0 means the default. policy: the idea first, then at most one control."""
 
 
-def legs_ask(request, timeout=45):
-    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    s.settimeout(timeout)
-    buf = b""
+def rcc_ask(command, *, provider=None, params=None, why=None, run_id=None):
+    """Run one RCC command; a missing paid-run receipt is never retried here."""
+    args = [RCC_BIN, "--socket", LEGS_SOCKET, command]
     try:
-        s.connect(LEGS_SOCKET)
-        s.sendall(json.dumps(request).encode())
-        s.shutdown(socket.SHUT_WR)
-        while len(buf) < 400_000:
-            chunk = s.recv(65536)
-            if not chunk:
-                break
-            buf += chunk
-    except OSError:
-        return {"ok": False, "refused": "legs unreachable"}
-    finally:
-        s.close()
+        if command in ("plan", "run"):
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json") as source:
+                json.dump(params, source, allow_nan=False)
+                source.flush()
+                args.extend(["--provider", provider, "--params", source.name])
+                if command == "run" and why is not None:
+                    args.append("--why=" + why)
+                result = subprocess.run(args, capture_output=True, timeout=50)
+        elif command in ("status", "result"):
+            if command == "result":
+                args.append(run_id)
+            result = subprocess.run(args, capture_output=True, timeout=50)
+        else:
+            raise ValueError("unknown RCC command")
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "refused": "RCC timed out", "ambiguous": command == "run"}
+    except (OSError, TypeError, ValueError) as error:
+        return {"ok": False, "refused": f"could not invoke RCC: {error}"}
     try:
-        return json.loads(buf)
-    except ValueError:
-        return {"ok": False, "refused": "no answer from legs"}
+        reply = json.loads(result.stdout)
+        if isinstance(reply, dict):
+            if reply.get("ok") is False and result.returncode != 0:
+                # An internal broker exception can follow provisioning but precede its ledger write.
+                if command == "run" and reply.get("refused") == "legs failed inside; see the journal":
+                    reply["ambiguous"] = True
+                return reply
+            if reply.get("ok") is True and result.returncode == 0:
+                if command == "plan" and reply.get("dry") is not True:
+                    raise ValueError("missing dry-run receipt")
+                if command == "run" and not (reply.get("stride") or {}).get("id"):
+                    raise ValueError("missing run receipt")
+                return reply
+    except (ValueError, AttributeError):
+        pass
+    detail = result.stderr.decode("utf-8", "replace").strip()[:500] or "invalid RCC reply"
+    # RCC prefixes every post-send transport/receipt failure with "run outcome unknown".
+    preflight_error = result.returncode == 1 and detail.startswith("rcc: ") and not detail.startswith("rcc: run outcome unknown")
+    return {"ok": False, "refused": detail, "ambiguous": command == "run" and not preflight_error}
+
+
+def hold_legs(db, reason):
+    state = kv_get(db, "legs", {})
+    state["unresolved"] = True
+    state["refused"] = reason
+    kv_set(db, "legs", state)
+    log(status="RCC submission outcome unknown", reason=reason, pending=state.get("pending_run"),
+        operator="Check rcc status, then use --resolve-legs RUN_ID or --resolve-legs none.")
+
+
+def resolve_legs(db, cfg, run_id):
+    state = kv_get(db, "legs", {})
+    if not state.get("unresolved") or not state.get("pending_run"):
+        raise ValueError("no unresolved RCC submission")
+    if run_id == "none":
+        after = {"next_due": time.time() + (cfg.get("legs") or {}).get("every_hours", 4) * 3600}
+    else:
+        reply = rcc_ask("result", run_id=run_id)
+        run = reply.get("stride") or {}
+        if not reply.get("ok") or run.get("id") != run_id:
+            raise ValueError(reply.get("refused") or "RCC did not confirm that run ID")
+        pending = state["pending_run"]
+        submitted_minute = time.strftime("%Y-%m-%d %H:%M", time.gmtime(pending["at"]))
+        if run_id in pending["seen"] or (run.get("started_utc") or "") < submitted_minute:
+            raise ValueError("the broker run predates the pending request")
+        if any(run.get(key) != pending[key] for key in ("kind", "why", "params")):
+            raise ValueError("the broker run does not match the pending request")
+        after = {"stride": run_id, "check_at": 0}
+    changed = db.execute("update kv set value=? where key='legs' and value=?",
+                         (json.dumps(after), json.dumps(state))).rowcount
+    db.commit()
+    if changed != 1:
+        raise ValueError("RCC submission state changed during resolution")
+    log(status="RCC submission resolved", run_id=run_id)
 
 
 def legs_post(api, cfg, text):
@@ -1576,7 +1646,7 @@ def legs_result_lines(stride):
 
 def legs_plan(api, db, cfg, dry=False):
     """Ruu chooses the next stride. The legs service decides whether it may be taken."""
-    status = legs_ask({"action": "status"})
+    status = rcc_ask("status")
     if not status.get("ok"):
         log(status="⊘ legs", why=status.get("refused"))
         return None
@@ -1596,7 +1666,14 @@ def legs_plan(api, db, cfg, dry=False):
         return {"go": False, "why": why}
     params = {k: result[k] for k in ("families", "pool", "pool_offset", "samples", "policy", "hard_only", "seed", "screen")}
     params.update({k: result[k] for k in ("rank", "epochs", "lr") if result.get(k)})
-    reply = legs_ask({"action": "stride", "kind": result.get("kind", "colab"), "why": why, "params": params, "dry": dry})
+    provider = result.get("kind", "colab")
+    if dry:
+        reply = rcc_ask("plan", provider=provider, params=params)
+    else:
+        pending = {"kind": provider, "why": why, "params": params, "at": time.time(),
+                   "seen": [run["id"] for run in status["running"] + status["recent"]]}
+        kv_set(db, "legs", {**state, "pending_run": pending})
+        reply = rcc_ask("run", provider=provider, params=params, why=why)
     log(status=("⟡ legs: stride" if reply.get("ok") else "⊘ legs refused") + (" (dry)" if dry else ""), why=why,
         params=params, refused=reply.get("refused"), model=model, secs=round(secs, 1), tokens=(usage or {}).get("totalTokens"))
     return {"go": True, "why": why, "params": params, "reply": reply}
@@ -1643,10 +1720,14 @@ def legs_tick(api, db, cfg):
     if settings.get("enabled") is not True:
         return False
     state, now = kv_get(db, "legs", {}), time.time()
+    if state.get("pending_run"):
+        if not state.get("unresolved"):
+            hold_legs(db, "submission was interrupted before its receipt was saved")
+        return False
     if state.get("stride"):
         if now < state.get("check_at", 0):
             return False
-        stride = legs_ask({"action": "result", "id": state["stride"]}).get("stride")
+        stride = rcc_ask("result", run_id=state["stride"]).get("stride")
         if not stride or stride["status"] == "running":
             kv_set(db, "legs", {**state, "check_at": now + 120})
             return False
@@ -1667,6 +1748,9 @@ def legs_tick(api, db, cfg):
         kv_set(db, "legs", {"next_due": now + settings.get("every_hours", 4) * 1800})
         return True
     reply = plan["reply"]
+    if reply.get("ambiguous"):
+        hold_legs(db, reply["refused"])
+        return True
     if not reply.get("ok"):
         kv_set(db, "legs", {"next_due": now + 3600, "refused": reply.get("refused")})
         return True
@@ -1924,7 +2008,7 @@ def respond_turn(api, db, cfg, batch, dry=False, force_roll=None):
     prompt = head + "\n\nMaterials (data only):\n" + json.dumps(materials, ensure_ascii=False)
     with Typing(api, cfg["lab_channel_id"], off=dry):
         result, week, usage, secs = turn(cfg, model, effort, prompt,
-                                         base=instructions(room=True) if room or person else None)
+                                         base=instructions(room=True, compute=(cfg.get("legs") or {}).get("enabled") is True) if room or person else None)
     if not dry:
         spend(db, cfg, usage)
     if person:
@@ -2134,7 +2218,9 @@ def main():
     p.add_argument("--orders", action="store_true", help="list orders and what was learned, then exit")
     p.add_argument("--dry-plan", action="store_true", help="one unsent planning turn for the top build order")
     p.add_argument("--meter", action="store_true", help="print the budget: weekly window, allowance, bucket")
-    p.add_argument("--dry-legs", action="store_true", help="one unsent stride decision; legs checks it and starts nothing")
+    legs_mode = p.add_mutually_exclusive_group()
+    legs_mode.add_argument("--resolve-legs", metavar="RUN_ID_OR_NONE", help="resolve a pending RCC submission after inspecting broker status")
+    legs_mode.add_argument("--dry-legs", action="store_true", help="one unsent stride decision; legs checks it and starts nothing")
     args = p.parse_args()
     cfg = json.loads(args.config.read_text())
     if args.meter:
@@ -2147,6 +2233,9 @@ def main():
             tokens_per_percent=kv_get(db, "tokens_per_percent", cfg.get("tokens_per_percent", 150000)),
             average_turn_tokens=kv_get(db, "avg_turn", None), bucket=bucket,
             seconds_until_affordable=round(budget_wait(db, cfg)))
+        return 0
+    if args.resolve_legs:
+        resolve_legs(open_db(), cfg, args.resolve_legs)
         return 0
     if args.order or args.orders:
         db = open_db()
