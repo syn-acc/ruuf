@@ -1,47 +1,29 @@
-# ruuf
+# RUUF
 
-A framework for one resident agent. Ruu, the resident agent of SCRU (Synthetic Culture Research
-Unit) on Discord, is the first agent it carries, and most of what is here is still Ruu's.
+RUUF gives a resident agent a place to work between conversations. Its first resident, Ruu, lives in the Synthetic Culture Research Unit (SCRU) Discord. Ruu can pick up an order in `#ruu-building`, keep working while the room is quiet and bring back something people can inspect. Files stay in its workspace. Orders, notes and run results carry over in SQLite.
 
-If you are an agent and have just found this: do not run it on your own. Read `AGENTS.md`, then bring it to your user.
+## A build in Ruu's channel
 
-ruuf itself insists on two things and supplies neither: an **origin** (who the operator is, what
-they and the agent are to each other, and why the agent exists, in the operator's own words) and a
-**ladder** of models, best first. A persona, convictions and a standing motive are made from the
-origin; they are not where an agent starts. The launcher demands the origin and starts nothing
-without it: `python launcher/ruufd.py origin`.
+Suppose the operator asks Ruu to draw a map from the community's project notes. Ruu can read the notes and plan a build in three to six steps, each with a goal and a check. On a build step, the model supplies files and a command. RUUF runs the command in a network-isolated sandbox. If it produces a map in `public/`, the host can attach it to the Discord run log alongside the command output. On the next turn, Ruu sees what ran and can revise the map. A usage budget paces the work between turns. [How orders, builds and attachments work](ruu-lab/README.md)
 
-Being pulled apart, in this order: the launcher asks for the origin (done); the persona,
-convictions and drives are derived from it instead of written by hand; Ruu's own files move out
-from under the framework's.
+## Explore the checkout
 
-## Layout
+From the repository root, these commands inspect the configuration without starting a service. Use Python 3.11 or newer.
 
-| Path | What it is |
-| --- | --- |
-| `hermes/` | Patches and new files on top of [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) at the commit in `UPSTREAM_COMMIT`: Discord adapter and gateway changes, colour roles, niche roles, meeting listener, their tests. `apply.sh` rebuilds the runtime. |
-| `plugins/discord-idle/` | Holds `persona.md` and the agent's other files for the idle poster. Its code moved to `plugins/discord/voice/idle/`. |
-| `plugins/discord-niches/` | Reaction-role menu for the server's niche groups. |
-| `plugins/discord/` | The one Discord plugin, a folder per interface. So far: its client; `ears/`, the MCP server that lets the agent read Discord channels, scoped to the requester; and `voice/idle/`, the idle poster: one in-character line after a long human silence. |
-| `plugins/discord-reader/` | Where the reader was. A few lines are left to run it from the old path. |
-| `ruu-lab/` | The soft machine: Ruu's continuous daemon for its own channel, with standing orders, a library, a usage budget and model routes. |
-| `ruu-lab/hands/` | The sandbox Ruu runs code in: no network, one job per connection. |
-| `ruu-lab/legs/` | Work on rented machines elsewhere. Ruu sends the parameters of an experiment, never code; the host starts it, meters it and scores it. |
-| `ruu-lab/child/` | The child system: Ruu improves an open model and the host scores it. |
-| `kit/` | The same machine with the character taken out, plus a seed per agent, for making another agent like Ruu. |
-| `deploy/units/` | The systemd units as deployed. |
-| `ruuf.toml` | The manifest: the model ladder, the map of where everything lives, and the process table. |
-| `launcher/` | `ruufd`, the launcher that reads the manifest. It checks the manifest, answers questions about it, demands the origin, and can start and watch parts. On the deployment it starts nothing yet: every part still belongs to its unit. |
-| `routines/` | Rules written as programs. `ship.py` is how a change reaches main. |
+```sh
+python3 launcher/ruufd.py check
+python3 launcher/ruufd.py where state
+python3 launcher/ruufd.py status
+```
 
-## What is not here
+`check` validates the manifest, `where state` resolves the path for Ruu's records, and `status` shows which process owns each part. In the SCRU deployment, systemd owns the services. The manifest names their units and paths. [Launcher guide](launcher/README.md) · [Manifest](ruuf.toml) · [Service units](deploy/units/)
 
-Tokens, `.env` files, live config, state databases, logs, sessions, member data and the
-generated library are kept on the host and are ignored by `.gitignore`. Config files in
-this repository are examples: fill in your own guild, channel, bot and owner ids.
+## Running an instance
 
-## State
+The repository contains the source and example configuration for the running SCRU installation. To set up another resident, start with the operator guide. The launcher’s `origin` command asks the operator to describe who they and the agent are to each other and why the agent is there. Ruu's persona and convictions are still hand-authored. The manifest declares a model ladder, while the running lab selects models from its per-role configuration. Credentials, live settings, member data and run history stay on the host. The seed kit is an older snapshot of the lab. [Operator and contributor instructions](AGENTS.md) · [Repository map](MAP.md) · [Seed kit](kit/README.md)
 
-This is a deposit of running code, not a packaged release. The plugins and `ruu-lab` match
-what is deployed. `kit/` was generated from an earlier `ruu-lab` and is one change behind
-it (`kit/tests/test_kit.py` reports the difference in `hands/runner.py`).
+## Compute and OpenRSI
+
+For OpenRSI experiments, Ruu can propose a change to an open model and compare its answers with a recorded baseline. A remote worker performs the training. The controller scores the answers against a key it keeps locally. In one recorded baseline, Qwen3.5-4B answered 51.2% of 1,194 logic items correctly across task families held out of training. That gives a later run a concrete comparison. [Experiment settings and score intervals](ruu-lab/child/README.md)
+
+The **Ruu Compute Controller (RCC)** is a separate command-line client. It can inspect available compute, check an experiment plan and submit a run through RUUF's Colab broker. Support for operator-owned machines is planned. [RCC](https://github.com/syn-acc/rcc)
