@@ -164,6 +164,12 @@ holds = "The hands runner, installed where the sandbox can read it and nothing c
 path = "/data/ruu-hands/workspace"
 holds = "The only folder the agent's own code can write to."
 
+[places.framework_result]
+path = "/var/lib/ruuf-framework/framework-result.json"
+kind = "file"
+optional = true
+holds = "Latest framework publication or deployment receipt when a resident publisher is configured."
+
 [places.rcc_bin]
 path = "/usr/local/bin/rcc"
 kind = "file"
@@ -220,7 +226,7 @@ start = "always"
 user = "hermes"
 restart = "on-failure"
 restart_seconds = 15
-reads = ["persona", "convictions", "config", "library", "frontier", "runtime", "codex_bin", "codex_home", "env", "hands_socket", "score_socket", "rcc_bin", "legs_socket"]
+reads = ["persona", "convictions", "config", "library", "frontier", "runtime", "codex_bin", "codex_home", "env", "hands_socket", "score_socket", "rcc_bin", "legs_socket", "framework_result"]
 writes = ["state", "codex_home", "eyes"]
 limits = { memory_mb = 768, tasks = 128 }
 unit = "ruu-soft-machine.service"

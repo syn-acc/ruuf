@@ -791,7 +791,7 @@ def hands_block(db, with_code=True, files=20, drives=()):
                               "synthesis. Read data/framework-work.md for the staged source and proposal format. "
                               "The publisher automatically checks supported changes and returns the outcome.")
         try:
-            with place("framework_result", "/var/lib/ruuf-framework/framework-result.json").open("rb") as source:
+            with Path(os.environ.get("RUUF_PLACE_FRAMEWORK_RESULT") or "/var/lib/ruuf-framework/framework-result.json").open("rb") as source:
                 receipt = json.loads(source.read(2049))
             if (isinstance(receipt, dict) and receipt.get("repo") == "rcc"
                     and receipt.get("status") in ("published", "active", "refused")):

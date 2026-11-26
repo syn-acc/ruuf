@@ -73,6 +73,7 @@ class Place:
     holds: str
     secret: bool = False   # tokens and logins: never shown to the agent, never reachable from a sandbox
     planned: bool = False  # named now so later steps have somewhere to put things; not expected to exist
+    optional: bool = False  # a configured integration may have no receipt yet
 
 
 @dataclass(frozen=True)
@@ -188,7 +189,7 @@ def load(path, env=os.environ):
         if not target.is_absolute():
             target = path.parent / target
         places[name] = Place(name, target, kind, str(spec.get("holds", "")),
-                             bool(spec.get("secret")), bool(spec.get("planned")))
+                             bool(spec.get("secret")), bool(spec.get("planned")), bool(spec.get("optional")))
     paths = {name: place.path for name, place in places.items()}
 
     providers = raw.get("providers") or {}
@@ -313,8 +314,12 @@ def check_host(machine, user_exists=None, unseen=None):
         except PermissionError:
             unseen.append(f"place {place.name}: {place.path}")
             continue
+        except FileNotFoundError:
+            if not place.optional:
+                findings.append(f"place {place.name}: nothing at {place.path}")
+            continue
         except OSError:
-            findings.append(f"place {place.name}: nothing at {place.path}")
+            findings.append(f"place {place.name}: cannot inspect {place.path}")
             continue
         right = {"dir": stat.S_ISDIR, "file": stat.S_ISREG, "socket": stat.S_ISSOCK}[place.kind](mode)
         if not right:
