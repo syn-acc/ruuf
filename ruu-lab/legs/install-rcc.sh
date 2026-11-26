@@ -1,10 +1,10 @@
 #!/bin/sh
 # Install the pinned RCC bundle on the controller. A single verified CLI file is also accepted.
 set -eu
-revision=0b0550aeb75ec7aae437ea5ff4e809ad32c1246c
-bundle=7ab384b6c4b858fea8a2789c9c8e5837eadf2bea253f09de615573b8a1d3f524
+revision=577a846642c43e7332df4980291890bec68b89ef
+bundle=3b498acca4ffe719fc477b09862dea185c3f3ce474a9c274d0cf4826adc9b229
 installer=288d268c537c6570cd12ef36a69ca42dfb3b16b2d7e7400c772f15ee26c87ac9
-client=88e9cf5ab6e813c94f966c330cfea9b7fb0d01dfb3c25f1f54776e82369eb2b5
+client=a380858dca3826beafbd189c16b4d626780ea05a06a98e368f2f79ae58cef224
 target=${RCC_INSTALL_PATH:-/usr/local/bin/rcc}
 if [ "$#" -gt 1 ]; then
     echo "usage: $0 [RCC-checkout-or-client-file]" >&2

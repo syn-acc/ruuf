@@ -20,12 +20,14 @@ CHUNK, MAX_CHUNKS = 8000, 2
 # The one exception is from-above, the source of its orders; what Ruu learns
 # from it is marked internal and the soft machine forbids reciting it.
 AUTHORED = {
+    "scru-architecture": ("How SCRU fits together", "scru"),
+    "framework-work": ("Contributing to RUUF and RCC", "scru"),
     "from-above": ("What has been said from above", "orders"),
     "atlas": ("Atlas of SCRU projects", "scru"),
     "openrsi-brief": ("OpenRSI: the brief", "openrsi"),
 }
 # Only public documents are copied into the hands workspace as data/.
-PUBLIC = {"atlas", "lore", "scrucraft-guidance", "scrucraft-release-status", "openrsi-brief"}
+PUBLIC = {"scru-architecture", "framework-work", "atlas", "lore", "scrucraft-guidance", "scrucraft-release-status", "openrsi-brief"}
 SOURCES = {
     "lore": ("Lore of the Singularity Cycle (game document)", "singularity-cycle", "/data/syn.gl/game/docs/LORE.md"),
     "scrucraft-guidance": ("scrucraft: connect your agent", "scrucraft", "/data/minecraft-syn-smp/public/guidance.md"),

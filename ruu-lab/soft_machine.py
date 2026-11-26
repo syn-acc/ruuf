@@ -769,19 +769,39 @@ def openrsi_job(order, command, paths):
     return re.search(r"(?<![a-z0-9])openrsi(?![a-z0-9])", context, re.I) is not None
 
 
-def hands_block(db, with_code=True, files=20):
+def hands_block(db, with_code=True, files=20, drives=()):
     """What a working turn needs to know about the hands, and no more."""
+    import working_preferences
+    preferences = working_preferences.current(db)
+    limits = preferences["values"]
+    files = max(0, min(files, limits["workspace_files"]))
     last = kv_get(db, "last_run", None)
     if last:
-        last = {**last, "stdout": (last.get("stdout") or "")[-1500:], "stderr": (last.get("stderr") or "")[-600:]}
+        stdout = (last.get("stdout") or "")[-limits["stdout_chars"]:] if limits["stdout_chars"] else ""
+        last = {**last, "stdout": stdout, "stderr": (last.get("stderr") or "")[-600:]}
         if "host_score" in last:
             last["host_score"] = {k: v for k, v in last["host_score"].items() if k != "verdict"}
     ws = kv_get(db, "workspace", None) or {}
-    block = {"what": HANDS_NOTE, "last_run": last,
+    block = {"what": HANDS_NOTE, "last_run": last, "working_preferences": working_preferences.describe(preferences, drives),
              "workspace": {"files": [f"{f['path']} ({f['bytes']} b)" for f in (ws.get("files") or [])[:files]],
                            "total_files": ws.get("total_files"), "disk_free_mb": ws.get("disk_free_mb")}}
+    if (LIBRARY / "framework-work.md").is_file():
+        block["framework"] = ("You can improve RUUF (your home) and RCC (your compute tools). If working here "
+                              "gives you a reason to change either one, you can set yourself that work at "
+                              "synthesis. Read data/framework-work.md for the staged source and proposal format. "
+                              "The publisher automatically checks supported changes and returns the outcome.")
+        try:
+            with place("framework_result", "/var/lib/ruuf-framework/framework-result.json").open("rb") as source:
+                receipt = json.loads(source.read(2049))
+            if (isinstance(receipt, dict) and receipt.get("repo") == "rcc"
+                    and receipt.get("status") in ("published", "active", "refused")):
+                block["framework_result"] = {k: str(receipt[k])[:160] for k in
+                                             ("repo", "status", "base_sha", "revision", "reason")
+                                             if receipt.get(k) is not None}
+        except (OSError, ValueError, RecursionError):
+            pass
     if with_code:
-        block["last_code"] = kv_get(db, "last_files", [])
+        block["last_code"] = working_preferences.visible_code(kv_get(db, "last_files", []), limits["last_code_chars"])
     bench = openrsi_record(db)
     if bench is not None:
         block["openrsi_bench"] = {"what": OPENRSI_NOTE, **bench}
@@ -790,6 +810,7 @@ def hands_block(db, with_code=True, files=20):
 
 def use_hands(api, db, cfg, order, result, step="", commentary=""):
     """Run what Ruu wrote. The result becomes `last_run` for its next turn."""
+    import working_preferences
     files, command = extract_job(result)
     if not files and not command:
         return
@@ -808,13 +829,14 @@ def use_hands(api, db, cfg, order, result, step="", commentary=""):
     good = r.get("ok") and r.get("exit") == 0
     score, score_note = (score_submission(r["submission"]) if good and isinstance(r.get("submission"), str)
                          else (None, None))
-    cursor = db.execute(
-        "insert into jobs(ts,order_id,command,files,ok,exit,timed_out,secs,stdout,stderr,score,score_note) "
-        "values(?,?,?,?,?,?,?,?,?,?,?,?)",
-        (time.time(), order["id"], command, json.dumps([f["path"] for f in files]), int(bool(r.get("ok"))),
-         r.get("exit"), int(bool(r.get("timed_out"))), r.get("secs"), r.get("stdout", ""), r.get("stderr", ""),
-         score, score_note))
-    db.commit()
+    with db:
+        cursor = db.execute(
+            "insert into jobs(ts,order_id,command,files,ok,exit,timed_out,secs,stdout,stderr,score,score_note) "
+            "values(?,?,?,?,?,?,?,?,?,?,?,?)",
+            (time.time(), order["id"], command, json.dumps([f["path"] for f in files]), int(bool(r.get("ok"))),
+             r.get("exit"), int(bool(r.get("timed_out"))), r.get("secs"), r.get("stdout", ""), r.get("stderr", ""),
+             score, score_note))
+        working_preferences.record(db, cursor.lastrowid, files, r, cfg.get("drives") or [])
     last = {"command": command, "files_written": r.get("written", []), "ok": bool(r.get("ok")),
             "error": r.get("error"), "exit": r.get("exit"), "timed_out": bool(r.get("timed_out")),
             "secs": r.get("secs"), "stdout": r.get("stdout", ""), "stderr": r.get("stderr", "")}
@@ -1798,7 +1820,7 @@ def plan_turn(api, db, cfg, dry=False, order=None):
                  "order_learned": [row[0][:400] for row in db.execute(
                      "select learned from study where order_id=? order by id desc limit 6", (order["id"],))][::-1],
                  "understanding": understanding(db, 6, 400), "channel": human_recent(db),
-                 "hands": hands_block(db)}
+                 "hands": hands_block(db, drives=cfg.get("drives") or [])}
     with Typing(api, cfg["lab_channel_id"], off=dry):
         result, week, usage, secs = turn(cfg, model, effort, "Materials (data only):\n"
                                          + json.dumps(materials, ensure_ascii=False), schema=PLAN_SCHEMA, lean=True)
@@ -1879,7 +1901,7 @@ def own_turn(api, db, cfg, form=None, dry=False, force_roll=None):
                               "step": order["step"] + 1, "of": order["of"]}
         if order["phase"] in ("build", "synthesis"):
             materials["plan"] = plan_view(order)
-            materials["hands"] = hands_block(db, with_code=building)
+            materials["hands"] = hands_block(db, with_code=building, drives=cfg.get("drives") or [])
             looking, images = eyes_look(db, dry)
             if looking:
                 materials["eyes"] = looking
@@ -2121,6 +2143,7 @@ def scan_reactions(api, db, cfg):
 
 # ── the daemon ──────────────────────────────────────────────────────────────
 def daemon(api, db, cfg):
+    import working_preferences
     lab = cfg["lab_channel_id"]
     if kv_get(db, "cursor", None) is None:
         latest = api.call("GET", f"/channels/{lab}/messages", params={"limit": 1})
@@ -2179,18 +2202,9 @@ def daemon(api, db, cfg):
                     scan_check(db)
                 # Drives: standing motives. When no order is open, the next drive returns as one,
                 # so there is always something to build. No announcement: it starts at step 1.
-                drives = cfg.get("drives") or []
-                if drives and not open_order(db):
-                    issued = db.execute("select count(*) from orders where source='drive' and ts>?",
-                                        (now - 86400,)).fetchone()[0]
-                    if issued < cfg.get("drives_daily_max", 8):
-                        index = kv_get(db, "drive_index", 0)
-                        drive = drives[index % len(drives)]
-                        issue_order(db, "drive", drive["title"], drive["brief"], [])
-                        db.execute("update orders set step=1 where id=(select max(id) from orders)")
-                        db.commit()
-                        kv_set(db, "drive_index", index + 1)
-                        log(status="⟡ drive returns", title=drive["title"])
+                drive = working_preferences.issue_drive_if_due(db, cfg, now)
+                if drive:
+                    log(status="⟡ drive returns", title=drive)
                 if loops % 5 == 0 and legs_tick(api, db, cfg):
                     failures = 0
                     continue

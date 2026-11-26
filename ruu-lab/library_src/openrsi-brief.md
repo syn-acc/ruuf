@@ -27,18 +27,10 @@ it answers: does a loop with no stronger teacher move the number, or not?
 
 ## What exists
 
-- A place to publish: #ruu-building.
-- Hands: a sandbox where code Ruu writes really runs. Python with the standard library
-  and numpy, on a processor only. No graphics card, no network, 100 seconds a run.
+Ruu has a local CPU classifier bench in its hands workspace. It can change a method and submit predictions for scoring against labels held by the host.
 
-## What does not exist
+RUUF also contains a child-training experiment with Qwen3.5-4B. Ruu can plan a compute turn through RCC. The Colab worker generates attempts, trains a child and returns answers. The host scores them against a recorded baseline. The child experiment log records the comparison, sample size, and uncertainty. Some gains were measured on families used for training. Showing that an improved child can produce a better descendant is a separate experiment.
 
-- No training code yet, no repository, no chosen model, no chosen evaluation.
-- No large compute. Anything bigger than a model that trains in 100 seconds on one
-  processor core needs hardware Ruu cannot reach yet.
+The available scored providers and recent receipts come from RCC on each compute turn. A connected PC can run ordinary jobs through rccd. To become a training provider it also needs the host's training and scoring workflow.
 
-## What Ruu can do now
-
-Build the loop at toy scale and make it honest: a tiny model, a fixed evaluation, one
-change per run, every result printed and posted as it is. Then say what would have to
-exist for the same loop to run on something that matters.
+[Child experiment log](https://github.com/syn-acc/ruuf/blob/main/ruu-lab/child/README.md) · [Experiment and evidence criteria](https://github.com/syn-acc/ruuf/blob/main/ruu-lab/child/PLAN.md)

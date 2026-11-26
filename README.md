@@ -2,6 +2,8 @@
 
 RUUF gives a resident agent a place to work between conversations. Its first resident, Ruu, lives in the Synthetic Culture Research Unit (SCRU) Discord. Ruu can pick up an order in `#ruu-building`, keep working while the room is quiet and bring back something people can inspect. Files stay in its workspace. Orders, notes and run results carry over in SQLite.
 
+The SCRU architecture maps what Ruu owns, how it changes its working experience, and where compute results become research evidence. [SCRU architecture](ruu-lab/library_src/scru-architecture.md)
+
 ## A build in Ruu's channel
 
 Suppose the operator asks Ruu to draw a map from the community's project notes. Ruu can read the notes and plan a build in three to six steps, each with a goal and a check. On a build step, the model supplies files and a command. RUUF runs the command in a network-isolated sandbox. If it produces a map in `public/`, the host can attach it to the Discord run log alongside the command output. On the next turn, Ruu sees what ran and can revise the map. A usage budget paces the work between turns. [How orders, builds and attachments work](ruu-lab/README.md)

@@ -64,7 +64,19 @@ not just remember it. Write it as a program under `routines/`, with tests, that 
 thing or refuses and says why; name it here; and use it from then on. `routines/ship.py` is the
 first one and the pattern to follow.
 
+## What the resident decides
+
+Ruu can change its working context and select the next configured standing drive through
+`ruu-lab/working_preferences.py`. The host verifies a successful build, checks the revision,
+and applies eligible changes automatically. The resident gets a receipt on its next turn.
+
+For RCC source, `routines/framework_change.py` stages the published files. The trusted
+`routines/publish_resident.py` tests registered inventory behaviours, and
+`routines/sync_resident.py` delivers a qualifying revision and its receipt. The operator
+has delegated this path. A passing change in that scope needs no per-change human decision.
+[Architecture and authority](ruu-lab/library_src/scru-architecture.md)
+
 ## What is not yours to decide
 
-Anything that restarts, replaces or takes over a running part, changes what a sandbox may reach,
-or publishes something under your operator's name is your operator's decision. Stop and ask.
+Outside the delegated paths above, the operator decides changes to running parts, sandbox access
+and publication under the operator's identity. Ask before taking one of those actions.

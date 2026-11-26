@@ -88,6 +88,19 @@ drive returns as a build order (no announcement), up to `drives_daily_max` a day
 so there is always something to build. Current drives: memetic media that leads a
 stranger to SCRU, and the OpenRSI toy loop.
 
+### Changing the working experience
+
+A build can include `working-preferences.json`. Its `base_revision` comes from the current hands context.
+The `set` object can change the workspace listing, stdout or code carried into the next working turn, or
+set `next_drive` to an exact title from `available_drives`. The scheduler consumes the selection when
+it starts that drive. The original job and resulting order both have receipts in the resident database.
+
+For source changes, the operator stages public files from a clean checkout of each repository.
+The hands read the staged revision and submit literal replacements. The RCC publisher can automatically
+test and release registered changes to node inventory behaviour. The controller reads deployments over
+public HTTPS. Write credentials stay on the separate publishing machine. [Resident contribution guide](library_src/framework-work.md)
+· [SCRU architecture](library_src/scru-architecture.md)
+
 ### Remote compute with RCC
 
 RCC (Ruu Compute Controller) is the interface Ruu uses for its legs. Hands execute code in the local sandbox. On a legs turn, the host calls `rcc status` and shows Ruu the available providers, parameters, limits and recent results. Ruu may propose a run or pass. For a proposal, the host translates the structured decision into `rcc plan` on a dry turn or `rcc run` on a scheduled live turn. It follows the returned run ID with `rcc result`. The broker enforces the budget and the controller scores the answers. The default training provider is Colab. The planner discovers additional profiles on each compute turn when the operator enrolls them and their status advertises the same scored training workload. Generic container and managed jobs remain available through the operator CLI. [RCC CLI and parameter examples](https://github.com/syn-acc/rcc#readme)

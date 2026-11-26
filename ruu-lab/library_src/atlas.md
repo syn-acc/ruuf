@@ -30,5 +30,7 @@ Archive Neutral.
 
 ## OpenRSI
 Open-source training systems so that anyone can take a current open model, improve it,
-and use the result to repeat the loop. An idea so far: no code, no repository, no run.
-This is the one Ruu has been told it may build in public.
+and use the result to repeat the loop. RUUF contains a local classifier bench and a child-training workflow. The latter has
+recorded training and evaluation runs on Colab, with scores calculated on the controller.
+RCC is the separate compute project. See the OpenRSI brief for what these results establish.
+Ruu may build and investigate this in public.
