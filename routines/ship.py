@@ -111,9 +111,18 @@ def external_config(repo):
     except OSError as exc:
         raise Refused(f"cannot read operator ship config: {exc}") from None
     if not path.is_relative_to(private):
-        worktrees = repo.git("worktree", "list", "--porcelain", "-z", text=False).split(b"\0")
-        if any(path.is_relative_to(Path(os.fsdecode(row[9:])).resolve()) for row in worktrees if row.startswith(b"worktree ")):
-            raise Refused("operator ship config must be outside candidate worktrees")
+        # Git 2.34 emits literal path bytes, including embedded newlines. Match the
+        # complete known ancestor against the record stream instead of splitting paths.
+        # An ambiguous match can only refuse a config. Check .git identities too, for
+        # filesystem aliases, separate git directories, and nested worktrees.
+        listing = b"\n" + repo.git("worktree", "list", "--porcelain", text=False)
+        for parent in path.parents:
+            if b"\nworktree " + os.fsencode(parent) + b"\n" in listing:
+                raise Refused("operator ship config must be outside candidate worktrees")
+            if os.path.lexists(parent / ".git"):
+                common = Repo(parent).git("rev-parse", "--path-format=absolute", "--git-common-dir", text=False)
+                if os.path.samefile(os.fsdecode(common.removesuffix(b"\n")), private.parent):
+                    raise Refused("operator ship config must be outside candidate worktrees")
     return path
 
 

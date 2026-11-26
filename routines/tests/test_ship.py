@@ -4,6 +4,7 @@
 """
 import getpass
 import io
+import os
 import shutil
 import subprocess
 import sys
@@ -35,6 +36,8 @@ keep = 2
 @unittest.skipUnless(shutil.which("git"), "needs git")
 class Case(unittest.TestCase):
     def setUp(self):
+        mask = os.umask(0o022)
+        self.addCleanup(os.umask, mask)
         self.dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.dir.cleanup)
         root = Path(self.dir.name).resolve()
@@ -82,6 +85,7 @@ class Shipping(Case):
         config = self.repo.private() / "ship.toml"
         policy = "[ship]" + (self.path / "ruuf.toml").read_text().split("[ship]", 1)[1]
         config.write_text(policy)
+        config.chmod(0o600)
         (self.path / "ruuf.toml").unlink()
         self.commit("generic framework", works="yes")
         self.assertEqual(self.run_ship("prove", "work")[0], 0)
@@ -96,11 +100,17 @@ class Shipping(Case):
         config = self.proofs.parent / "operator.toml"
         manifest = (self.path / "ruuf.toml").read_text()
         config.write_text("[ship]" + manifest.split("[ship]", 1)[1].replace("test -f works", "test -f independent"))
+        config.chmod(0o600)
         self.commit("candidate", works="yes")
         code, why = self.run_ship("--ship-config", str(config), "prove", "work")
         self.assertEqual(code, 1)
         self.assertIn("test -f independent", why)
         code, why = self.run_ship("--ship-config", str(self.path / "ruuf.toml"), "prove", "work")
+        self.assertEqual(code, 1)
+        self.assertIn("outside candidate worktrees", why)
+        linked = self.proofs.parent / 'linked "tree"\nsecond line'
+        self.sh("git", "worktree", "add", "--detach", str(linked), "work")
+        code, why = self.run_ship("--ship-config", str(linked / "ruuf.toml"), "prove", "work")
         self.assertEqual(code, 1)
         self.assertIn("outside candidate worktrees", why)
 

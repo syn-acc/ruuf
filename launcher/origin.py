@@ -68,9 +68,13 @@ class Origin:
     problem: str = ""                             # why the file could not be used, if it could not
 
     @property
+    def required(self):
+        return [q.key for q in self.questions if q.required]
+
+    @property
     def open(self):
         """The questions still demanded."""
-        return [q.key for q in self.questions if q.required and q.key not in self.answers]
+        return [key for key in self.required if key not in self.answers]
 
     @property
     def complete(self):
@@ -130,14 +134,14 @@ def write(machine, answers, by):
     where = previous.path
     where.parent.mkdir(parents=True, exist_ok=True)
     given = {**previous.given, "by": by, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    with tempfile.NamedTemporaryFile("w", dir=where.parent, encoding="utf-8", newline="\n", delete=False) as out:
-        scratch = Path(out.name)  # a new file, mode 0600
-        try:
+    out = tempfile.NamedTemporaryFile("w", dir=where.parent, encoding="utf-8", newline="\n", delete=False)
+    scratch = Path(out.name)  # a new file, mode 0600
+    try:
+        with out:
             out.write(render(machine.origin_questions, {**previous.answers, **answers}, given))
-            out.close()
-            os.replace(scratch, where)
-        finally:
-            scratch.unlink(missing_ok=True)
+        os.replace(scratch, where)
+    finally:
+        scratch.unlink(missing_ok=True)
     return where
 
 
@@ -199,7 +203,7 @@ def summary(machine):
     if origin.complete:
         by = f", given by {origin.given['by']} at {origin.given.get('at', '?')}" if origin.given.get("by") else ""
         return f"origin: answered{by}"
-    return (f"origin: {len(origin.open)} of {sum(q.required for q in origin.questions)} question(s) open. Nothing is started until the "
+    return (f"origin: {len(origin.open)} of {len(origin.required)} question(s) open. Nothing is started until the "
             "operator answers them: `ruufd origin`")
 
 
@@ -226,7 +230,7 @@ def show(machine, say=print, facts=None):
         else:
             state = "open"
         rows.append(f"  {q.key.ljust(width)}  {state}")
-    say(f"{sum(q.required for q in origin.questions) - len(origin.open)} of {sum(q.required for q in origin.questions)} answered:")
+    say(f"{len(origin.required) - len(origin.open)} of {len(origin.required)} answered:")
     for row in rows:
         say(row)
     if origin.complete:
@@ -273,10 +277,11 @@ def ask(machine, read_line=input, say=print, facts=None, terminal=True):
             answers[q.key] = guesses[q.key]
     left = [q.key for q in origin.questions if q.required and q.key not in answers]
     say()
-    if answers == origin.answers:
+    changes = {key: value for key, value in answers.items() if value != origin.answers.get(key)}
+    if not changes:
         say("nothing was answered, so nothing was written")
     else:
-        say(f"written: {write(machine, answers, by=facts['behind'] or facts['login'] or 'unknown')}")
+        say(f"written: {write(machine, changes, by=facts['behind'] or facts['login'] or 'unknown')}")
     if left:
         say(f"still open: {', '.join(left)}")
         return 1
