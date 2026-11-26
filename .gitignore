@@ -5,6 +5,3 @@ __pycache__/
 *.pre-*
 *.before*
 *.orig
-config.json
-library/
-state.json

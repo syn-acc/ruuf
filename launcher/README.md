@@ -19,7 +19,7 @@ python3 launcher/ruufd.py origin ask
 
 `init` creates an empty process table and instance-relative paths for logs and supervisor state. It refuses to overwrite an existing manifest. Run each command with `RUUF_MANIFEST` set, or supply `--manifest FILE` before the command. The flag takes precedence.
 
-At a terminal, the operator supplies a name and the intended purpose of the instance. These use the existing answer keys `operator.name` and `spark.words`. Answers live in the instance's owner-only `origin.toml`, or the file chosen by `places.origin`. The launcher checks that the required fields have answers before starting a part. `origin` reports completion and `origin blank` prints the instance's unanswered form.
+At a terminal, the operator supplies a name and the intended purpose of the instance. The default answer keys are `operator.name` and `instance.purpose`. Answers live in the instance's owner-only `origin.toml`, or the file chosen by `places.origin`. The launcher checks that the required fields have answers before starting a part. `origin` reports completion and `origin blank` prints the instance's unanswered form.
 
 An instance can replace the default form by listing its questions in the manifest. Each entry has a unique `section.field` key, a prompt, an optional `why` explanation, and a `required` flag that defaults to true. At least one question must be required. Keeping a field's key preserves its existing answer when the wording changes. Answers to retired fields stay in the private origin file.
 
@@ -30,7 +30,7 @@ ask = "Which name should this instance record for its operator?"
 required = true
 
 [[origin.questions]]
-key = "spark.words"
+key = "instance.purpose"
 ask = "What do you intend to use this instance for?"
 required = true
 ```

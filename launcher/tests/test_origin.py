@@ -45,8 +45,8 @@ ROOT = {**OPERATOR, "login": "root", "behind": "ada", "root": True, "git_name": 
 PART = {**OPERATOR, "login": "mind", "full": "", "git_name": "", "owns_manifest": False}
 VISITOR = {**OPERATOR, "login": "eve", "full": "", "git_name": "", "owns_manifest": False}
 
-NEEDED = ("operator.name", "spark.words")
-SAID = {"operator.name": "Countess", "spark.words": "Build weekly engine reports."}
+NEEDED = ("operator.name", "instance.purpose")
+SAID = {"operator.name": "Countess", "instance.purpose": "Build weekly engine reports."}
 CUSTOM_FORM = """
 [[origin.questions]]
 key = "spark.words"
@@ -108,8 +108,8 @@ class Demanding(Case):
         self.assertFalse((self.root / "logs").exists())  # refused before anything was touched
 
     def test_a_half_answered_origin_still_starts_nothing(self):
-        origins.write(self.m, {k: v for k, v in SAID.items() if not k.startswith("spark.")}, by="ada")
-        self.assertEqual(origins.read(self.m).open, ["spark.words"])
+        origins.write(self.m, {k: v for k, v in SAID.items() if k != "instance.purpose"}, by="ada")
+        self.assertEqual(origins.read(self.m).open, ["instance.purpose"])
         with self.assertRaises(ruufd.Refused) as caught:
             ruufd.Supervisor(self.m, ["mind"], as_self=True).open()
         self.assertIn("1 question(s)", str(caught.exception))
@@ -133,6 +133,7 @@ class Demanding(Case):
         self.assertEqual(origins.read(self.m).open, ["spark.words"])
         self.assertEqual(self.cli("origin", "ask", typed=["Weekly reports", ""])[0], 0)
         self.assertTrue(origins.read(self.m).complete)
+        self.assertEqual(origins.read(self.m).answers, {"spark.words": "Weekly reports"})
         self.manifest.write_text(MANIFEST + CUSTOM_FORM.replace("required = true", "required = false"))
         self.assertEqual(self.cli("check")[0], 1)
 
@@ -149,7 +150,7 @@ class Answering(Case):
         self.assertIn("the origin is complete", text)
         origin = origins.read(self.m)
         self.assertTrue(origin.complete)
-        self.assertEqual(origin.answers["spark.words"], SAID["spark.words"])
+        self.assertEqual(origin.answers["instance.purpose"], SAID["instance.purpose"])
         self.assertEqual(origin.answers, SAID)
         self.assertTrue(origin.given["by"])
         code, text = self.cli("origin")
@@ -168,8 +169,8 @@ class Answering(Case):
         first = [SAID["operator.name"]]
         code, text = self.cli("origin", "ask", typed=first)
         self.assertEqual(code, 1)
-        self.assertIn("still open: spark.words", text)
-        rest = ["", SAID["spark.words"]]
+        self.assertIn("still open: instance.purpose", text)
+        rest = ["", SAID["instance.purpose"]]
         code, text = self.cli("origin", "ask", typed=rest)
         self.assertEqual(code, 0, text)
         self.assertEqual(origins.read(self.m).answers, SAID)
@@ -189,6 +190,8 @@ class Answering(Case):
     def test_the_blank_file_is_the_same_file_with_nothing_answered(self):
         code, text = self.cli("origin", "blank")
         self.assertEqual(code, 0)
+        self.assertIn('[instance]\n# What is the intended purpose of this instance?\npurpose = ""', text)
+        self.assertNotIn("spark", text)
         where = origins.path(self.m)
         where.parent.mkdir(parents=True)
         where.write_text(text, encoding="utf-8")
@@ -201,15 +204,21 @@ class Answering(Case):
         where = origins.path(self.m)
         where.parent.mkdir(parents=True)
         where.write_text('[operator]\nname = "Ada"\nabout = "Existing notes"\n[spark]\nwords = "Original"\nwants = "Existing practice"\n')
+        original = where.read_bytes()
+        self.assertTrue(origins.read(self.m).complete)
+        self.assertEqual(origins.read(self.m).answers["instance.purpose"], "Original")
+        self.assertNotIn("spark", self.cli("origin")[1])
+        self.assertEqual(where.read_bytes(), original)
         self.assertEqual(self.cli("origin", "ask", typed=["", "Updated purpose"])[0], 0)
         self.assertEqual(origins.read(self.m).answers, {"operator.name": "Ada", "operator.about": "Existing notes",
-                                                        "spark.words": "Updated purpose", "spark.wants": "Existing practice"})
+                                                        "instance.purpose": "Updated purpose", "spark.words": "Original",
+                                                        "spark.wants": "Existing practice"})
         self.assertNotIn("Existing notes", self.cli("origin")[1])
 
     def test_awkward_words_survive_the_file(self):
-        said = {**SAID, "spark.words": 'she said "build" \\ and then:\ttwo lines\nof it — ünïcode'}
+        said = {**SAID, "instance.purpose": 'she said "build" \\ and then:\ttwo lines\nof it — ünïcode'}
         origins.write(self.m, said, by="ada")
-        self.assertEqual(origins.read(self.m).answers["spark.words"], said["spark.words"])
+        self.assertEqual(origins.read(self.m).answers["instance.purpose"], said["instance.purpose"])
 
 
 class Context(Case):
@@ -252,7 +261,7 @@ class Context(Case):
         self.assertEqual(code, 0, self.text)
         origin = origins.read(self.m)
         self.assertEqual(origin.answers["operator.name"], "countess")       # Enter accepted the guess
-        self.assertEqual(origin.answers["spark.words"], SAID["spark.words"])
+        self.assertEqual(origin.answers["instance.purpose"], SAID["instance.purpose"])
         self.assertEqual(origin.given["by"], "ada")
 
     def test_the_real_caller_can_be_looked_at_without_error(self):

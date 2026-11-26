@@ -32,7 +32,7 @@ class Question:
 
 QUESTIONS = (
     Question("operator.name", "What name should this instance record for its operator?", ""),
-    Question("spark.words", "What is the intended purpose of this instance?", ""),
+    Question("instance.purpose", "What is the intended purpose of this instance?", ""),
 )
 FIELD = re.compile(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")
 
@@ -102,6 +102,11 @@ def read(machine):
     answers = {f"{section}.{key}": value for section, fields in raw.items()
                if section != "given" and isinstance(fields, dict) for key, value in fields.items()
                if FIELD.fullmatch(f"{section}.{key}") and isinstance(value, str) and value.strip()}
+    # Older default origin files used spark.words. An explicitly configured form
+    # uses its own keys; an explicit purpose, including a blank one, wins.
+    instance = raw.get("instance", {})
+    if questions is QUESTIONS and "spark.words" in answers and isinstance(instance, dict) and "purpose" not in instance:
+        answers["instance.purpose"] = answers["spark.words"]
     given = raw.get("given") if isinstance(raw.get("given"), dict) else {}
     return Origin(where, questions, answers, dict(given))
 
