@@ -1,8 +1,0 @@
-{
-  "enabled": true,
-  "guild_id": "1429742642505191556",
-  "channel_id": "1429742643562287238",
-  "bot_id": "531798682350256128",
-  "generation_model": "gpt-5.6-sol",
-  "news_enabled": true
-}

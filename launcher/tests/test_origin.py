@@ -45,11 +45,19 @@ ROOT = {**OPERATOR, "login": "root", "behind": "ada", "root": True, "git_name": 
 PART = {**OPERATOR, "login": "mind", "full": "", "git_name": "", "owns_manifest": False}
 VISITOR = {**OPERATOR, "login": "eve", "full": "", "git_name": "", "owns_manifest": False}
 
-SAID = {"operator.name": "Countess", "operator.about": "I build engines and will not have guesswork.",
-        "relation.you_are": "the one who made it", "relation.your_word": "an order; everyone else is advice",
-        "world.name": "the workshop", "world.about": "people who build engines",
-        "spark.words": "i wanted something in the room that keeps building when we stop",
-        "spark.wants": "building the next small thing"}
+NEEDED = ("operator.name", "spark.words")
+SAID = {"operator.name": "Countess", "spark.words": "Build weekly engine reports."}
+CUSTOM_FORM = """
+[[origin.questions]]
+key = "spark.words"
+ask = "What reports should the instance prepare?"
+required = true
+
+[[origin.questions]]
+key = "project.notes"
+ask = "Any formatting preferences?"
+required = false
+"""
 
 
 class Case(unittest.TestCase):
@@ -88,12 +96,12 @@ class Demanding(Case):
         code, text = self.cli("origin")
         self.assertEqual(code, 1)
         self.assertIn("(not written yet)", text)
-        for key in origins.NEEDED:
+        for key in NEEDED:
             self.assertIn(key, text)
         self.assertIn("the operator's to answer and nobody else's", text)
         code, text = self.cli("check")
         self.assertEqual(code, 0)  # the manifest is sound; the origin is a separate demand
-        self.assertIn(f"origin: {len(origins.NEEDED)} of {len(origins.NEEDED)} question(s) open", text)
+        self.assertIn(f"origin: {len(NEEDED)} of {len(NEEDED)} question(s) open", text)
         code, text = self.cli("run", "--only", "mind", "--as-self")
         self.assertEqual(code, 1)
         self.assertIn("refused: this agent has no origin yet", text)
@@ -101,10 +109,10 @@ class Demanding(Case):
 
     def test_a_half_answered_origin_still_starts_nothing(self):
         origins.write(self.m, {k: v for k, v in SAID.items() if not k.startswith("spark.")}, by="ada")
-        self.assertEqual(origins.read(self.m).open, ["spark.words", "spark.wants"])
+        self.assertEqual(origins.read(self.m).open, ["spark.words"])
         with self.assertRaises(ruufd.Refused) as caught:
             ruufd.Supervisor(self.m, ["mind"], as_self=True).open()
-        self.assertIn("2 question(s)", str(caught.exception))
+        self.assertIn("1 question(s)", str(caught.exception))
 
     def test_an_origin_that_cannot_be_read_is_not_taken_as_given(self):
         where = origins.path(self.m)
@@ -115,10 +123,18 @@ class Demanding(Case):
         self.assertIn("cannot be read", origin.problem)
         self.assertEqual(self.cli("origin")[0], 1)
 
-    def test_the_optional_question_is_not_demanded(self):
-        origins.write(self.m, SAID, by="ada")
+    def test_the_instance_form_controls_prompts_and_required_fields(self):
+        self.manifest.write_text(MANIFEST + CUSTOM_FORM)
+        self.m = ruufd.load(self.manifest, env={})
+        blank = self.cli("origin", "blank")[1]
+        self.assertIn("What reports should the instance prepare?", blank)
+        self.assertIn("Any formatting preferences? (optional)", blank)
+        self.assertNotIn("[operator]", blank)
+        self.assertEqual(origins.read(self.m).open, ["spark.words"])
+        self.assertEqual(self.cli("origin", "ask", typed=["Weekly reports", ""])[0], 0)
         self.assertTrue(origins.read(self.m).complete)
-        self.assertNotIn("spark.sources", origins.read(self.m).answers)
+        self.manifest.write_text(MANIFEST + CUSTOM_FORM.replace("required = true", "required = false"))
+        self.assertEqual(self.cli("check")[0], 1)
 
     def test_without_a_place_the_origin_sits_beside_the_manifest(self):
         self.manifest.write_text(MANIFEST.replace("[places.origin]", "[places.elsewhere]"), encoding="utf-8")
@@ -127,18 +143,18 @@ class Demanding(Case):
 
 class Answering(Case):
     def test_the_operator_answers_and_the_words_are_kept_as_said(self):
-        typed = [SAID[key] for key in origins.NEEDED] + ['old manuals; "the difference engine"; a cold room']
+        typed = [SAID[key] for key in NEEDED]
         code, text = self.cli("origin", "ask", typed=typed)
         self.assertEqual(code, 0, text)
         self.assertIn("the origin is complete", text)
         origin = origins.read(self.m)
         self.assertTrue(origin.complete)
         self.assertEqual(origin.answers["spark.words"], SAID["spark.words"])
-        self.assertEqual(origin.answers["spark.sources"], typed[-1])
+        self.assertEqual(origin.answers, SAID)
         self.assertTrue(origin.given["by"])
         code, text = self.cli("origin")
         self.assertEqual(code, 0, text)
-        self.assertIn(f"{len(origins.NEEDED)} of {len(origins.NEEDED)} answered", text)
+        self.assertIn(f"{len(NEEDED)} of {len(NEEDED)} answered", text)
         for words in SAID.values():  # what was said is never printed back
             self.assertNotIn(words, text)
         self.assertIn("origin: answered, given by", self.cli("check")[1])
@@ -149,11 +165,11 @@ class Answering(Case):
         self.assertEqual(stat.S_IMODE(os.stat(where).st_mode), 0o600)
 
     def test_enter_keeps_an_answer_and_a_later_visit_finishes_the_rest(self):
-        first = [SAID[key] for key in origins.NEEDED[:3]]
+        first = [SAID["operator.name"]]
         code, text = self.cli("origin", "ask", typed=first)
         self.assertEqual(code, 1)
-        self.assertIn("still open: relation.your_word", text)
-        rest = ["", "", ""] + [SAID[key] for key in origins.NEEDED[3:]] + [""]
+        self.assertIn("still open: spark.words", text)
+        rest = ["", SAID["spark.words"]]
         code, text = self.cli("origin", "ask", typed=rest)
         self.assertEqual(code, 0, text)
         self.assertEqual(origins.read(self.m).answers, SAID)
@@ -177,9 +193,18 @@ class Answering(Case):
         where.parent.mkdir(parents=True)
         where.write_text(text, encoding="utf-8")
         origin = origins.read(self.m)
-        self.assertEqual((origin.problem, origin.answers, origin.open), ("", {}, list(origins.NEEDED)))
+        self.assertEqual((origin.problem, origin.answers, origin.open), ("", {}, list(NEEDED)))
         where.write_text(text.replace('name = ""', 'name = "Countess"', 1), encoding="utf-8")
         self.assertEqual(origins.read(self.m).answers, {"operator.name": "Countess"})
+
+    def test_editing_a_new_form_preserves_answers_from_a_legacy_form(self):
+        where = origins.path(self.m)
+        where.parent.mkdir(parents=True)
+        where.write_text('[operator]\nname = "Ada"\nabout = "Existing notes"\n[spark]\nwords = "Original"\nwants = "Existing practice"\n')
+        self.assertEqual(self.cli("origin", "ask", typed=["", "Updated purpose"])[0], 0)
+        self.assertEqual(origins.read(self.m).answers, {"operator.name": "Ada", "operator.about": "Existing notes",
+                                                        "spark.words": "Updated purpose", "spark.wants": "Existing practice"})
+        self.assertNotIn("Existing notes", self.cli("origin")[1])
 
     def test_awkward_words_survive_the_file(self):
         said = {**SAID, "spark.words": 'she said "build" \\ and then:\ttwo lines\nof it — ünïcode'}
@@ -188,17 +213,17 @@ class Answering(Case):
 
 
 class Context(Case):
-    """The launcher works out who is asking and what they are likely to be to the agent."""
+    """A possible operator name is offered for confirmation."""
 
     def test_the_one_who_set_it_up_is_recognised_and_their_public_name_guessed(self):
         seen, guesses = origins.context(self.m, OPERATOR)
         self.assertIn("you are ada on engine", seen[0])
-        self.assertEqual(guesses, {"relation.you_are": "the one who set it up", "operator.name": "countess"})
+        self.assertEqual(guesses, {"operator.name": "countess"})
 
     def test_someone_acting_as_root_runs_the_machine(self):
         seen, guesses = origins.context(self.m, ROOT)
         self.assertIn("you are ada on engine, acting as root", seen[0])
-        self.assertEqual(guesses["relation.you_are"], "the one who runs it")
+        self.assertEqual(set(guesses), {"operator.name"})
         self.assertEqual(guesses["operator.name"], "Ada L")
 
     def test_bare_root_is_not_given_a_name(self):
@@ -208,12 +233,12 @@ class Context(Case):
     def test_the_agents_own_account_is_not_a_person(self):
         seen, guesses = origins.context(self.m, PART)
         self.assertEqual(guesses, {})
-        self.assertIn("the agent's own account, not a person", "\n".join(seen))
+        self.assertIn("a configured part uses this account", "\n".join(seen))
 
     def test_a_visitor_is_offered_nothing(self):
         seen, guesses = origins.context(self.m, VISITOR)
         self.assertEqual(guesses, {})
-        self.assertIn("you look like a visitor", "\n".join(seen))
+        self.assertEqual(seen, ["you are eve on engine"])
 
     def test_a_guess_is_shown_as_a_guess_and_is_not_an_answer(self):
         code = origins.show(self.m, self.say(), facts=OPERATOR)
@@ -222,12 +247,12 @@ class Context(Case):
         self.assertEqual(origins.read(self.m).answers, {})
 
     def test_a_guess_becomes_an_answer_only_when_the_operator_accepts_it(self):
-        lines = iter(["", *[SAID[key] for key in origins.NEEDED[1:]], ""])
+        lines = iter(["", *[SAID[key] for key in NEEDED[1:]], ""])
         code = origins.ask(self.m, lambda prompt="": next(lines), self.say(), facts=OPERATOR)
         self.assertEqual(code, 0, self.text)
         origin = origins.read(self.m)
         self.assertEqual(origin.answers["operator.name"], "countess")       # Enter accepted the guess
-        self.assertEqual(origin.answers["relation.you_are"], SAID["relation.you_are"])  # typed over the guess
+        self.assertEqual(origin.answers["spark.words"], SAID["spark.words"])
         self.assertEqual(origin.given["by"], "ada")
 
     def test_the_real_caller_can_be_looked_at_without_error(self):
@@ -235,20 +260,6 @@ class Context(Case):
         self.assertEqual(set(facts), set(OPERATOR))
         self.assertEqual(facts["git_name"], "")  # not a clone: the account's own git name is not borrowed
         origins.context(self.m, facts)
-
-
-class TheRepositoryManifest(unittest.TestCase):
-    def setUp(self):
-        self.m = ruufd.load(HERE.parent.parent / "ruuf.toml", env={})
-
-    def test_it_names_where_the_origin_lives_on_the_host_not_in_the_repository(self):
-        where = origins.path(self.m)
-        self.assertEqual(where, self.m.where("origin"))
-        self.assertNotIn(HERE.parent.parent, where.parents)
-
-    def test_no_part_reads_the_origin_yet(self):
-        for part in self.m.parts.values():
-            self.assertNotIn("origin", (*part.reads, *part.writes), part.name)
 
 
 if __name__ == "__main__":

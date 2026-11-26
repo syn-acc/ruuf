@@ -1,98 +1,77 @@
-# The launcher
+# The RUUF launcher
 
-ruuf is a series of processes. `ruufd` is the one that knows what they are and where everything
-lives. It reads one file, `ruuf.toml` at the repository root, and builds two things from it.
+`ruufd` reads an instance manifest. The operator specifies its processes, files, model providers, and permissions. An instance can run a local program with zero providers. The framework ships a passive example that you can validate from the checkout.
 
-| Thing | What it is |
-| --- | --- |
-| The map | Names to places. A part asks for `state` or `decisions` by name and never builds a path. |
-| The process table | One entry per part: its command, its user, how it starts, what it may read and write, its limits. |
+```sh
+python3 launcher/ruufd.py --manifest ruuf.toml check
+```
 
-## State
+## Create an instance
 
-The launcher checks the manifest, answers questions about it, and can start and watch parts:
-always-on parts and timers, with restarts, time limits and one log file per part.
+Choose a directory you own outside the framework checkout and an identifier for your resident.
 
-**On the deployment it starts nothing.** Every part in `ruuf.toml` still names the systemd unit
-that runs it, and the launcher refuses to start a part that names one, so nothing can be started
-twice. A part is handed over by stopping its unit and removing `unit` from its entry. Socket parts
-(the sandboxes) are refused for now: the launcher cannot yet apply their limits.
+```sh
+python3 launcher/ruufd.py init "$HOME/my-instance" --id my-instance
+export RUUF_MANIFEST="$HOME/my-instance/ruuf.toml"
+python3 launcher/ruufd.py check
+python3 launcher/ruufd.py origin ask
+```
 
-The soft machine, idle poster and scanner take their places from the launcher when it starts them
-(`RUUF_PLACE_<NAME>`), and fall back to the deployment's paths when a unit starts them, as now. A
-test holds each part's entry to the places its code asks for.
+`init` creates an empty process table and instance-relative paths for logs and supervisor state. It refuses to overwrite an existing manifest. Run each command with `RUUF_MANIFEST` set, or supply `--manifest FILE` before the command. The flag takes precedence.
 
-## The origin
+At a terminal, the operator supplies a name and the intended purpose of the instance. These use the existing answer keys `operator.name` and `spark.words`. Answers live in the instance's owner-only `origin.toml`, or the file chosen by `places.origin`. The launcher checks that the required fields have answers before starting a part. `origin` reports completion and `origin blank` prints the instance's unanswered form.
 
-A persona and a standing motive were written from something: a person, a place, what the two are
-to each other, and why the person wanted an agent there. That is the origin. ruuf holds none of its
-own. The launcher demands it from the operator and starts nothing until every question is answered.
+An instance can replace the default form by listing its questions in the manifest. Each entry has a unique `section.field` key, a prompt, an optional `why` explanation, and a `required` flag that defaults to true. At least one question must be required. Keeping a field's key preserves its existing answer when the wording changes. Answers to retired fields stay in the private origin file.
 
-    python launcher/ruufd.py origin         # what is known, what is guessed, what is still demanded
-    python launcher/ruufd.py origin ask     # the operator answers, at a terminal
-    python launcher/ruufd.py origin blank   # the file with nothing answered, to fill in by hand
+```toml
+[[origin.questions]]
+key = "operator.name"
+ask = "Which name should this instance record for its operator?"
+required = true
 
-| | |
-| --- | --- |
-| What is asked | Who the operator is (`operator`), what they are to the agent and what their word is to it (`relation`), where it lives (`world`), and why it exists and what it does when left alone (`spark`). `origin.py` holds the questions. |
-| What the launcher works out | Who is asking, from the machine: the login, who is behind `sudo`, the clone's git identity, whether the manifest is theirs, whether the login is one a part runs as. From that it says what the caller looks like: the one who runs the machine, the one who set it up, the agent's own account, or a visitor. |
-| Guesses | A name and a relation may be guessed. A guess is shown as a guess and becomes an answer only when the operator presses Enter on it in `origin ask`. |
-| Who may answer | The operator, at a terminal. With no terminal `origin ask` refuses: an agent does not answer for its operator. |
-| Where it is kept | The place called `origin`, on the host, readable by its owner only. Never in the repository. |
-| What is shown | Which questions are answered, by whom and when. The answers themselves are never printed. |
-| What it gates | `run` refuses while a question is open. `check` reports the state and does not fail on it. |
+[[origin.questions]]
+key = "spark.words"
+ask = "What do you intend to use this instance for?"
+required = true
+```
 
-Nothing reads the origin yet beyond the launcher. Deriving the persona, the convictions and the
-drives from it is the next step, and so is working out who a person is to the agent while it is
-talking to them, which today is one number per member in the soft machine.
+## Configure a part
 
-## Use
+Add an entry to the instance manifest for each installed program. For example, this timer runs an operator-supplied Python script once per hour. Replace `your-account` with a local user. Put the script and its input in the instance directory.
 
-    python launcher/ruufd.py check            # is the manifest sound
-    python launcher/ruufd.py check --host     # and does this machine match it
-    python launcher/ruufd.py where            # the whole map
-    python launcher/ruufd.py where state      # one place
-    python launcher/ruufd.py status           # the process table, live if the launcher is running
-    python launcher/ruufd.py map              # the map as the agent may be shown it
-    python launcher/ruufd.py run --all        # start every part the launcher owns; stays in the foreground
-    python launcher/ruufd.py run --only a b   # or only these
-    python launcher/ruufd.py stop             # stop the launcher and everything it started
+```toml
+[places.input]
+path = "observations.txt"
+kind = "file"
+holds = "Observations for the local report."
 
-    python -m unittest discover launcher/tests
+[parts.report]
+run = ["python3", "{root}/report.py"]
+cwd = "{root}"
+user = "your-account"
+start = "timer"
+every_seconds = 3600
+reads = ["input"]
+```
 
-Python 3.11 or later, standard library only. (On 3.10, install `tomli`.)
+The process receives the path as `RUUF_PLACE_INPUT`. Parts receive the places they declare under `reads` and `writes`, plus `RUUF_PART` and `RUUF_MANIFEST`. These declarations describe the launcher interface. Operating-system accounts and sandboxing determine filesystem access.
 
-To point the same manifest at another machine or a scratch folder, override a var:
+Relative place paths and working directories resolve from the manifest directory. `{root}` names that directory and `{framework}` names the RUUF installation. Declare additional roots in `[vars]` and override them with `RUUF_VAR_<NAME>`. A model ladder, when supplied, names registered providers in order of preference.
 
-    RUUF_VAR_HOME=/tmp/scratch python launcher/ruufd.py where
+```sh
+python3 launcher/ruufd.py check --host
+python3 launcher/ruufd.py where input
+python3 launcher/ruufd.py map
+python3 launcher/ruufd.py run --only report
+# From another terminal using the same manifest
+python3 launcher/ruufd.py status --json
+python3 launcher/ruufd.py stop
+```
 
-## How a part is run
+## Supervision
 
-| | |
-| --- | --- |
-| User | As the user its entry names. Only root can start a part as someone else; `--as-self` runs everything as the current user, for scratch folders. |
-| Places | It is told where its places are through `RUUF_PLACE_<NAME>`, and only the ones it lists under `reads` and `writes`. Also `RUUF_PART` and `RUUF_MANIFEST`. |
-| Output | Appended to `<logs>/<part>.log`, with the launcher's own lines marked `[ruufd ...]`. |
-| Restart | `no`, `on-failure` or `always`, after `restart_seconds`. Five starts inside a minute and the part is left down. |
-| Timers | `every_seconds` counts from when the last run ended. `daily_at` is HH:MM UTC. |
-| Time limit | `limits.runtime_seconds`: past it the part is killed. The other limits are recorded and not yet applied. |
-| Stopping | The part and everything it spawned get SIGTERM, then SIGKILL after ten seconds. |
+`run --all` starts the instance's eligible parts in the foreground. Always-on processes and timers support restart policies, delays and runtime limits. The supervisor records per-part output under `places.logs` and the running process table under `places.launcher`. Give each instance its own directories. Stopping sends SIGTERM to each process group, then SIGKILL after ten seconds if needed.
 
-The launcher writes what it is running to `<launcher>/ruufd.json`; `status` and `stop` read it.
+A part with a `unit` belongs to an external service manager. Manual and socket-activated parts also require their declared manager. The launcher checks sandbox network and secret-access declarations, and leaves sandbox execution to a manager that can enforce its limits. Parts run under their named account. Switching accounts requires the corresponding OS privileges. Use `--as-self` for local fixtures.
 
-## What the manifest refuses
-
-`check` reports every problem at once. Beyond missing fields and names that do not resolve, three
-rules protect the sandboxes, the parts that run code the agent wrote:
-
-1. A sandbox has `limits.network = false`.
-2. A sandbox does not read or write a `secret` place.
-3. A sandbox does not share a user with any part that reads a `secret` place.
-
-`map` leaves secret places out and gives no paths: the agent learns what exists and what it holds.
-
-## What comes next
-
-In order: the sockets and the
-sandboxes, which keep every limit their units set today; memory and task limits for ordinary
-parts; then handing the first real part over from its unit. The launcher is meant to run as root, because it starts parts as different users.
+Run the launcher tests with `python3 -m unittest discover launcher/tests`. Python 3.11 and later use the standard library. Python 3.10 requires `tomli`.

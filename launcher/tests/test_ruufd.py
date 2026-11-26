@@ -3,8 +3,8 @@
     python -m unittest discover launcher/tests
 """
 import io
+import json
 import os
-import re
 import signal
 import subprocess
 import sys
@@ -82,7 +82,7 @@ class Case(unittest.TestCase):
     def give_origin(self, manifest):
         """Answer every question, as an operator would have before anything is started."""
         m = ruufd.load(manifest, env={})
-        ruufd.origins.write(m, {key: "said" for key in ruufd.origins.NEEDED}, by="tester")
+        ruufd.origins.write(m, {q.key: "said" for q in m.origin_questions if q.required}, by="tester")
         return m
 
     def problems(self, text):
@@ -126,7 +126,7 @@ class Loading(Case):
     def test_every_problem_is_reported_at_once(self):
         found = self.problems("[agent]\nid = 'x'\n[parts.a]\nrun = []\nstart = 'sometimes'\n")
         text = "\n".join(found)
-        for expected in ("ladder: required", "parts.a.run", "parts.a.start", "parts.a.user"):
+        for expected in ("parts.a.run", "parts.a.start", "parts.a.user"):
             self.assertIn(expected, text)
 
     def test_ladder_needs_a_known_provider(self):
@@ -196,10 +196,10 @@ class CommandLine(Case):
         self.assertNotIn("login", text)
 
     def test_a_broken_manifest_exits_1_and_lists_the_problems(self):
-        self.write("[agent]\nid = 'x'\n")
+        self.write("[agent]\nid = 'x'\n[parts.bad]\nrun = []\n")
         code, text = self.cli("check")
         self.assertEqual(code, 1)
-        self.assertIn("ladder: required", text)
+        self.assertIn("parts.bad.run", text)
 
     def test_no_manifest_exits_2(self):
         code, text = self.cli("check")
@@ -376,27 +376,61 @@ class Running(Case):
         self.assertEqual(ruufd.next_daily("13:30", noon), noon + 5400)
         self.assertEqual(ruufd.next_daily("06:20", noon), noon - 12 * 3600 + 86400 + 6 * 3600 + 1200)
 
-    def test_run_status_and_stop_from_the_command_line(self):
-        manifest = self.write(RUNNABLE + part("mind", "import time; time.sleep(60)"))
-        m = self.give_origin(manifest)  # nothing starts without one
-        launcher = [sys.executable, str(HERE.parent / "ruufd.py"), "--manifest", str(manifest)]
-        proc = subprocess.Popen([*launcher, "run", "--all"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self.addCleanup(proc.kill)
+    def test_new_external_instance_runs_only_its_configured_part(self):
+        launcher = [sys.executable, str(HERE.parent / "ruufd.py")]
+        env = dict(os.environ)
+        env.pop("RUUF_MANIFEST", None)
+
+        def cli(*args, selected=env, cwd=self.root):
+            return subprocess.run([*launcher, *args], env=selected, cwd=cwd, capture_output=True,
+                                  text=True, timeout=12)
+
+        self.assertEqual(cli("check", cwd=REPO_MANIFEST.parent).returncode, 2)
+        example = ruufd.load(REPO_MANIFEST, env={})
+        self.assertEqual((example.parts, example.providers, example.ladder), ({}, {}, ()))
+        self.assertEqual(cli("--manifest", str(REPO_MANIFEST), "check").returncode, 0)
+        folder = self.root / "instance"
+        manifest = folder / "ruuf.toml"
+        create = cli("init", str(folder), "--id", "observatory")
+        self.assertEqual(create.returncode, 0, create.stdout)
+        selected = {**env, "RUUF_MANIFEST": str(manifest), "RUUF_PLACE_UNDECLARED": "another-instance"}
+        self.assertEqual(cli("init", str(folder), "--id", "another").returncode, 1)
+        self.assertIn("agent observatory, 0 rung(s)", cli("check", selected=selected).stdout)
+        (folder / "notes.txt").write_text("count star trails", encoding="utf-8")
+        (folder / "task.py").write_text(
+            "import os, time\nfrom pathlib import Path\n"
+            "assert 'RUUF_PLACE_UNDECLARED' not in os.environ\n"
+            "Path('receipt').write_text(Path(os.environ['RUUF_PLACE_NOTES']).read_text())\n"
+            "time.sleep(30)\n", encoding="utf-8")
+        with manifest.open("a", encoding="utf-8") as handle:
+            handle.write(f'\n[places.notes]\npath = "notes.txt"\nkind = "file"\nholds = "Local observation"\n'
+                         f'\n[parts.observe]\nrun = [{json.dumps(sys.executable)}, "{{root}}/task.py", "{{framework}}"]\ncwd = "."\n'
+                         f'user = {json.dumps(ruufd.Supervisor._whoami())}\nstart = "always"\nreads = ["notes"]\n')
+        m = self.give_origin(manifest)
+        self.assertEqual(m.parts["observe"].cwd.resolve(), folder)
+        self.assertEqual(Path(m.parts["observe"].run[-1]), HERE.parent.parent)
+        proc = subprocess.Popen([*launcher, "run", "--all"], cwd=self.root, env=selected,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        def cleanup():
+            if proc.poll() is None:
+                proc.terminate()
+                proc.wait(timeout=12)
+        self.addCleanup(cleanup)
         end = time.monotonic() + 10
         while time.monotonic() < end:
             state = ruufd.read_state(m)
-            if state and state["parts"][0]["state"] == "running":
+            if state and state["parts"][0]["state"] == "running" and (folder / "receipt").is_file():
                 break
             time.sleep(0.05)
         else:
             self.fail("the launcher never reported a running part")
-        code, text = self.cli("status")
-        self.assertIn("running pid", text)
-        self.assertIn(f"launcher running, pid {proc.pid}", text)
-        again = subprocess.run([*launcher, "run", "--all"], capture_output=True, text=True)
-        self.assertIn("already running", again.stdout)
-        code, text = self.cli("stop")
-        self.assertEqual(code, 0, text)
+        self.assertEqual((folder / "receipt").read_text(), "count star trails")
+        status = json.loads(cli("status", "--json", selected=selected).stdout)
+        self.assertEqual(status["launcher"], {"running": True, "pid": proc.pid})
+        self.assertEqual([p["part"] for p in status["parts"]], ["observe"])
+        self.assertIn("already running", cli("run", "--all", selected=selected).stdout)
+        stopped = cli("--manifest", str(manifest), "stop")
+        self.assertEqual(stopped.returncode, 0, stopped.stdout)
         self.assertEqual(proc.wait(timeout=10), 0)
         self.assertTrue(gone(state["parts"][0]["pid"]))
 
@@ -417,59 +451,6 @@ class Unseen(Case):
         self.assertFalse(any("/locked/python" in f or "login" in f for f in found), found)
         self.assertTrue(any("/locked/python (it runs as mind)" in u for u in unseen), unseen)
         self.assertTrue(any(u.startswith("place login") for u in unseen), unseen)
-
-
-class TheRepositoryManifest(unittest.TestCase):
-    """ruuf.toml describes the deployment. It has to stay sound and keep saying what the units say."""
-
-    def setUp(self):
-        self.m = ruufd.load(REPO_MANIFEST, env={})
-
-    def test_it_loads_with_a_ladder_best_first(self):
-        self.assertEqual(self.m.agent["id"], "ruu")
-        self.assertGreaterEqual(len(self.m.ladder), 1)
-
-    def test_every_part_names_a_unit_that_is_in_the_repository(self):
-        units = HERE.parent.parent / "deploy" / "units"
-        for part in self.m.parts.values():
-            self.assertTrue((units / part.unit).is_file(), f"{part.name}: {part.unit}")
-
-    def test_commands_match_the_units(self):
-        units = HERE.parent.parent / "deploy" / "units"
-        service = {"soft-machine": "ruu-soft-machine.service", "idle-poster": "discord-idle.service",
-                   "frontier-scan": "ruu-frontier-scan.service", "hands": "ruu-hands@.service",
-                   "score": "ruu-score@.service", "legs": "ruu-legs@.service", "child-reap": "ruu-child-reap.service",
-                   "gateway": "bot-syn-gl.service"}
-        self.assertEqual(set(service), set(self.m.parts))
-        for name, unit in service.items():
-            lines = (units / unit).read_text(encoding="utf-8").splitlines()
-            command = next(line.split("=", 1)[1] for line in lines if line.startswith("ExecStart="))
-            user = next(line.split("=", 1)[1] for line in lines if line.startswith("User="))
-            self.assertEqual(" ".join(self.m.parts[name].run), command, name)
-            self.assertEqual(self.m.parts[name].user, user, name)
-
-    def test_each_part_declares_every_place_its_code_asks_for(self):
-        repo = HERE.parent.parent
-        code = {"soft-machine": ["ruu-lab/soft_machine.py"],
-                "idle-poster": ["plugins/discord/voice/idle/run.py", "plugins/discord/voice/idle/generate.py"],
-                "frontier-scan": ["ruu-lab/frontier_scan.py"]}
-        for name, files in code.items():
-            text = "".join((repo / f).read_text(encoding="utf-8") for f in files)
-            asked = {n.lower() for n in re.findall(r'RUUF_PLACE_([A-Z_]+)"', text)}
-            asked |= set(re.findall(r'\bplace\("([a-z_]+)"', text))
-            self.assertTrue(asked, name)  # the code does take its places from the launcher
-            part = self.m.parts[name]
-            self.assertLessEqual(asked, {*part.reads, *part.writes}, name)
-
-    def test_nothing_in_it_is_the_launchers_to_start_yet(self):
-        self.assertEqual(ruufd.owned(self.m), [])  # every part still names its unit
-        with self.assertRaises(ruufd.Refused):
-            ruufd.Supervisor(self.m, ["soft-machine"], as_self=True)
-
-    def test_the_server_paths_can_be_moved_with_one_var(self):
-        moved = ruufd.load(REPO_MANIFEST, env={"RUUF_VAR_HOME": "/tmp/scratch"})
-        self.assertEqual(moved.where("state"), Path("/tmp/scratch/.hermes/ruu-lab"))
-        self.assertEqual(moved.where("hands_socket"), Path("/run/ruu-hands.sock"))
 
 
 if __name__ == "__main__":

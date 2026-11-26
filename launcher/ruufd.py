@@ -12,9 +12,10 @@ and timers, with restarts, time limits and one log per part. It will not start a
 names a `unit`: that part belongs to systemd until its entry says otherwise. Socket parts (the
 sandboxes) are not started yet.
 
-It starts nothing until the agent has an origin: who its operator is, what they are to each other
-and why it exists, in the operator's own words (see origin.py). The launcher holds none of its own.
+It starts parts after the operator has supplied the origin required by the instance (see origin.py).
 
+    python launcher/ruufd.py init DIR --id ID  create an instance with no configured processes
+    export RUUF_MANIFEST=/path/to/ruuf.toml    select it, or use --manifest FILE before a command
     python launcher/ruufd.py check            is the manifest sound
     python launcher/ruufd.py check --host     and does this machine match it
     python launcher/ruufd.py where [name]     a place on the map, or all of them
@@ -55,6 +56,7 @@ KINDS = ("dir", "file", "socket")
 RESTARTS = ("no", "on-failure", "always")
 NAME = re.compile(r"[a-z][a-z0-9_-]*")
 SLOT = re.compile(r"\{([a-z][a-z0-9_-]*)\}")
+FRAMEWORK = Path(__file__).resolve().parent.parent
 
 
 class ManifestError(ValueError):
@@ -106,6 +108,7 @@ class Machine:
     providers: dict
     parts: dict
     ship: dict = field(default_factory=dict)  # how a change reaches main: read by routines/ship.py
+    origin_questions: tuple = origins.QUESTIONS
 
     def where(self, name):
         try:
@@ -119,14 +122,17 @@ class Machine:
                 for p in self.places.values() if not p.secret}
 
 
-def find_manifest(start=None, env=os.environ):
-    if env.get("RUUF_MANIFEST"):
-        return Path(env["RUUF_MANIFEST"])
-    here = Path(start or Path.cwd()).resolve()
-    for folder in (here, *here.parents):
-        if (folder / "ruuf.toml").is_file():
-            return folder / "ruuf.toml"
-    return Path(__file__).resolve().parent.parent / "ruuf.toml"
+def create_instance(directory, identity):
+    if not NAME.fullmatch(identity):
+        raise ValueError("instance id must be a lowercase name")
+    folder = Path(directory).expanduser().resolve()
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path = folder / "ruuf.toml"
+    with path.open("x", encoding="utf-8") as handle:
+        handle.write(f'[agent]\nid = "{identity}"\n'
+                     '\n[places.logs]\npath = "logs"\nholds = "Process output for this instance."\noptional = true\n'
+                     '\n[places.launcher]\npath = "run"\nholds = "Supervisor state for this instance."\noptional = true\n')
+    return path
 
 
 def load(path, env=os.environ):
@@ -139,8 +145,15 @@ def load(path, env=os.environ):
 
     # Vars are the few roots everything else hangs from. RUUF_VAR_<NAME> overrides one, so the
     # same manifest describes the server and a scratch folder.
-    values = {"root": str(path.parent)}
+    for table in ("agent", "vars", "providers", "places", "parts", "ship"):
+        if table in raw and not isinstance(raw[table], dict):
+            say(f"{table}: must be a table")
+            raw[table] = {}
+    values = {"root": str(path.parent), "framework": str(FRAMEWORK)}
     for key, value in (raw.get("vars") or {}).items():
+        if key in ("root", "framework"):
+            say(f"vars.{key}: reserved framework path")
+            continue
         if not NAME.fullmatch(key) or not isinstance(value, str):
             say(f"vars.{key}: a var is a lowercase name with a string value")
             continue
@@ -194,18 +207,22 @@ def load(path, env=os.environ):
 
     providers = raw.get("providers") or {}
     ladder = []
-    rungs = raw.get("ladder")
-    if not isinstance(rungs, list) or not rungs:
-        say("ladder: required. One or more models, best first; this is the only thing ruuf insists on")
+    rungs = raw.get("ladder", [])
+    if not isinstance(rungs, list):
+        say("ladder: expected a list of model entries")
     for i, rung in enumerate(rungs if isinstance(rungs, list) else []):
-        if not isinstance(rung, dict) or not rung.get("model") or not rung.get("provider"):
+        if (not isinstance(rung, dict) or not isinstance(rung.get("model"), str) or not rung["model"].strip()
+                or not isinstance(rung.get("provider"), str) or not rung["provider"]):
             say(f"ladder[{i}]: needs a provider and a model")
             continue
         if rung["provider"] not in providers:
             say(f"ladder[{i}]: no provider called {rung['provider']!r}")
         ladder.append(dict(rung))
     for name, spec in providers.items():
-        for key, value in (spec.items() if isinstance(spec, dict) else ()):
+        if not isinstance(spec, dict):
+            say(f"providers.{name}: must be a table")
+            continue
+        for key, value in spec.items():
             if isinstance(value, str):
                 spec[key] = expand(value, f"providers.{name}.{key}", paths)
 
@@ -260,11 +277,11 @@ def load(path, env=os.environ):
             for place in (*reads, *writes):
                 if place in places and places[place].secret:
                     say(f"{at}: a sandbox may not touch the secret place {place!r}")
-        cwd = spec.get("cwd")
+        cwd = expand(spec["cwd"], f"{at}.cwd", paths) if isinstance(spec.get("cwd"), str) else None
         parts[name] = Part(
             name=name, run=tuple(expand(a, f"{at}.run", paths) for a in run), start=start or "",
             user=str(spec.get("user", "")), about=str(spec.get("about", "")),
-            cwd=Path(expand(cwd, f"{at}.cwd", paths)) if cwd else None,
+            cwd=path.parent / cwd if cwd else None,
             restart=restart, restart_seconds=int(spec.get("restart_seconds", 0) or 0),
             every_seconds=every if isinstance(every, int) else 0, daily_at=str(daily),
             socket=socket, reads=tuple(reads) if isinstance(reads, list) else (),
@@ -287,10 +304,14 @@ def load(path, env=os.environ):
             return [expand_all(v, where_) for v in value]
         return value
     ship = {key: expand_all(value, f"ship.{key}") for key, value in (raw.get("ship") or {}).items()}
+    try:
+        questions = origins.configured(raw.get("origin"))
+    except ValueError as exc:
+        say(str(exc))
 
     if problems:
         raise ManifestError(problems)
-    return Machine(path, dict(agent), places, tuple(ladder), providers, parts, ship)
+    return Machine(path, dict(agent), places, tuple(ladder), providers, parts, ship, questions)
 
 
 def check_host(machine, user_exists=None, unseen=None):
@@ -415,8 +436,8 @@ class Supervisor:
         if part.unit:
             raise Refused(f"{name}: still run by {part.unit}. Two of it would both act. "
                           "Stop that unit and remove `unit` from its entry to hand it to the launcher")
-        if part.start == "socket":
-            raise Refused(f"{name}: socket parts are sandboxes, and the launcher cannot yet apply their limits")
+        if part.sandbox or part.start == "socket":
+            raise Refused(f"{name}: sandbox and socket parts need an external manager; the launcher cannot yet apply their limits")
         if part.start == "manual":
             raise Refused(f"{name}: a manual part is started by hand")
         if part.user != self.me and os.geteuid() != 0 and not self.as_self:
@@ -426,7 +447,7 @@ class Supervisor:
 
     # A part learns where its places are from its environment, and only the ones it declared.
     def _env(self, part):
-        env = dict(os.environ)
+        env = {key: value for key, value in os.environ.items() if not key.startswith("RUUF_PLACE_")}
         env.update(RUUF_PART=part.name, RUUF_MANIFEST=str(self.machine.manifest), PYTHONUNBUFFERED="1")
         for name in (*part.reads, *part.writes):
             env["RUUF_PLACE_" + name.upper().replace("-", "_")] = str(self.machine.where(name))
@@ -587,7 +608,7 @@ def read_state(machine):
 
 def owned(machine):
     """The parts the launcher may start today: no unit holds them, and they are not sandboxes."""
-    return [p.name for p in machine.parts.values() if not p.unit and p.start in ("always", "timer")]
+    return [p.name for p in machine.parts.values() if not p.unit and not p.sandbox and p.start in ("always", "timer")]
 
 
 def table(rows, heads):
@@ -598,8 +619,11 @@ def table(rows, heads):
 
 def main(argv=None, out=sys.stdout, read_line=None):
     parser = argparse.ArgumentParser(prog="ruufd", description="The ruuf launcher.")
-    parser.add_argument("--manifest", help="path to ruuf.toml; default: $RUUF_MANIFEST, then the nearest one")
+    parser.add_argument("--manifest", help="explicit instance manifest; defaults to $RUUF_MANIFEST")
     sub = parser.add_subparsers(dest="command", required=True)
+    new = sub.add_parser("init", help="create an external instance manifest with no configured processes")
+    new.add_argument("directory", type=Path)
+    new.add_argument("--id", required=True, help="lowercase identifier for the new instance")
     c = sub.add_parser("check", help="is the manifest sound")
     c.add_argument("--host", action="store_true", help="also compare it with this machine")
     w = sub.add_parser("where", help="a place on the map")
@@ -620,11 +644,27 @@ def main(argv=None, out=sys.stdout, read_line=None):
     args = parser.parse_args(argv)
     say = lambda text="": print(text, file=out)
 
+    if args.command == "init":
+        try:
+            path = create_instance(args.directory, args.id)
+        except (OSError, ValueError) as exc:
+            say(f"cannot create instance: {exc}")
+            return 1
+        say(f"Created {path}. Select it with --manifest or RUUF_MANIFEST.")
+        return 0
+
+    manifest = args.manifest or os.environ.get("RUUF_MANIFEST")
+    if not manifest:
+        say("Choose an instance with --manifest FILE or RUUF_MANIFEST. Use init DIR --id NAME to create one.")
+        return 2
     try:
-        machine = load(args.manifest or find_manifest())
+        machine = load(manifest)
     except FileNotFoundError as exc:
         say(f"no manifest: {exc.filename}")
         return 2
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        say(f"cannot read manifest: {exc}")
+        return 1
     except ManifestError as exc:
         say(f"{len(exc.problems)} problem(s) in the manifest:")
         for problem in exc.problems:
@@ -674,7 +714,7 @@ def main(argv=None, out=sys.stdout, read_line=None):
 
     if args.command == "origin":
         if args.action == "blank":
-            return origins.blank(say)
+            return origins.blank(machine, say)
         if args.action == "ask":
             return origins.ask(machine, read_line or input, say, terminal=bool(read_line) or sys.stdin.isatty())
         return origins.show(machine, say)

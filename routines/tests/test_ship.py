@@ -78,6 +78,32 @@ class Case(unittest.TestCase):
 
 
 class Shipping(Case):
+    def test_clone_policy_proves_a_tree_without_an_instance_and_binds_the_receipt(self):
+        config = self.repo.private() / "ship.toml"
+        policy = "[ship]" + (self.path / "ruuf.toml").read_text().split("[ship]", 1)[1]
+        config.write_text(policy)
+        (self.path / "ruuf.toml").unlink()
+        self.commit("generic framework", works="yes")
+        self.assertEqual(self.run_ship("prove", "work")[0], 0)
+        config.write_text(policy.replace("test -f works", "test -s works"))
+        code, why = self.run_ship("land", "work")
+        self.assertEqual(code, 1)
+        self.assertIn("proof settings changed", why)
+        self.assertEqual(self.run_ship("prove", "work")[0], 0)
+        self.assertEqual(self.run_ship("land", "work")[0], 0)
+
+    def test_explicit_config_runs_its_own_checks_and_cannot_point_into_a_worktree(self):
+        config = self.proofs.parent / "operator.toml"
+        manifest = (self.path / "ruuf.toml").read_text()
+        config.write_text("[ship]" + manifest.split("[ship]", 1)[1].replace("test -f works", "test -f independent"))
+        self.commit("candidate", works="yes")
+        code, why = self.run_ship("--ship-config", str(config), "prove", "work")
+        self.assertEqual(code, 1)
+        self.assertIn("test -f independent", why)
+        code, why = self.run_ship("--ship-config", str(self.path / "ruuf.toml"), "prove", "work")
+        self.assertEqual(code, 1)
+        self.assertIn("outside candidate worktrees", why)
+
     def test_a_proven_branch_lands_as_a_fast_forward(self):
         self.commit("make it work", works="yes")
         code, text = self.run_ship("prove", "work")
